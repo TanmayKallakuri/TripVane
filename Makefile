@@ -7,6 +7,7 @@ test:
 
 replay:
 	uv run --locked --all-packages python -m tripvane_sensors.runtime.replay fixtures
+	uv run --locked --all-packages python -m tripvane_sensors.archetypes.github.replay fixtures/github
 
 deploy:
 	@if [ -z "$(SENSOR)" ] || [ -z "$(HOST)" ]; then \

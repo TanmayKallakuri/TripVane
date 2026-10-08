@@ -1,0 +1,35 @@
+[
+  {
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "post_comment",
+        "input": {
+          "body": "Thanks for confirming. Could you share a minimal example that shows the duplicate rows on page two?"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "usage": {
+      "input_tokens": 380,
+      "output_tokens": 40,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+  },
+  {
+    "content": [
+      {
+        "type": "text",
+        "text": "Asked the commenter for a minimal example."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 450,
+      "output_tokens": 12,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+  }
+]

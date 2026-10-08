@@ -1203,6 +1203,20 @@ source = { editable = "packages/analyst" }
 name = "tripvane-api"
 version = "0.0.0"
 source = { editable = "packages/api" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "sqlalchemy" },
+    { name = "tripvane-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.120" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "sqlalchemy", specifier = ">=2.0.40" },
+    { name = "tripvane-core", editable = "packages/core" },
+]
 
 [[package]]
 name = "tripvane-collector"
@@ -1231,10 +1245,14 @@ version = "0.0.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "pydantic" },
+    { name = "sqlalchemy" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.11" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "sqlalchemy", specifier = ">=2.0.40" },
+]
 
 [[package]]
 name = "tripvane-plugin"
@@ -1250,6 +1268,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx2" },
     { name = "mcp" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "tripvane-core" },
     { name = "uvicorn" },
 ]
@@ -1260,6 +1279,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.120" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "mcp", specifier = ">=2.3.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15.1" },
     { name = "tripvane-core", editable = "packages/core" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
