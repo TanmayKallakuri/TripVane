@@ -4,13 +4,11 @@
 #
 #   infra/deploy-core.sh HOST          (or: make deploy-core HOST=203.0.113.20)
 #
-# Settings come from .env.core at the repository root, which is never committed; it must
-# set API_HOSTNAME, CANARY_HOSTNAME and COLLECTOR_HOSTNAME (each with a DNS A record
-# pointing at HOST; CANARY_HOSTNAME must not name Tripvane, because canary URLs are planted
-# in decoy documents), DATABASE_URL, CANARY_HMAC_KEY and CANARY_BASE_URL
-# (https://CANARY_HOSTNAME).
+# Settings come from .env.core at the repository root, which is never committed;
+# infra/stage.sh lists what it must set and checks it.
 # The droplet needs Docker and compose (infra/bootstrap-droplet.sh) and ssh access as
-# DEPLOY_USER (default root).
+# DEPLOY_USER (default root). Servers that cannot be reached over ssh are set up with
+# infra/user-data.sh instead.
 set -euo pipefail
 
 [ $# -eq 1 ] && [ -n "$1" ] || { echo "usage: $0 HOST" >&2; exit 2; }
@@ -20,26 +18,10 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEPLOY_USER=${DEPLOY_USER:-root}
 TARGET="$DEPLOY_USER@$HOST"
 REMOTE_DIR=/opt/tripvane/core
-ENV_FILE="$ROOT/.env.core"
 
-[ -f "$ENV_FILE" ] || { echo "deploy-core: missing $ENV_FILE" >&2; exit 2; }
-
-# Read one KEY=value line from the env file without sourcing it.
-env_value() {
-    sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
-}
-
-for key in API_HOSTNAME CANARY_HOSTNAME COLLECTOR_HOSTNAME DATABASE_URL CANARY_HMAC_KEY \
-    CANARY_BASE_URL; do
-    if [ -z "$(env_value "$key")" ]; then
-        echo "deploy-core: $key is not set in $ENV_FILE" >&2
-        exit 2
-    fi
-done
-if [ "$(env_value CANARY_BASE_URL)" != "https://$(env_value CANARY_HOSTNAME)" ]; then
-    echo "deploy-core: CANARY_BASE_URL must be https://CANARY_HOSTNAME" >&2
-    exit 2
-fi
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+"$ROOT/infra/stage.sh" core "$STAGE"
 
 for service in api collector; do
     echo "deploy-core: building tripvane-service:$service"
@@ -53,11 +35,6 @@ docker save tripvane-service:api tripvane-service:collector | gzip \
     | ssh -o BatchMode=yes "$TARGET" "gunzip | docker load"
 
 echo "deploy-core: writing configuration to $REMOTE_DIR"
-STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
-cp "$ROOT/infra/compose.core.yml" "$STAGE/compose.yml"
-cp "$ROOT/infra/Caddyfile.core" "$STAGE/Caddyfile"
-(umask 077 && cp "$ENV_FILE" "$STAGE/.env")
 tar -C "$STAGE" -czf - compose.yml Caddyfile .env \
     | ssh -o BatchMode=yes "$TARGET" "tar -C '$REMOTE_DIR' -xzf - && chmod 600 '$REMOTE_DIR/.env'"
 
