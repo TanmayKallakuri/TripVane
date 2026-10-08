@@ -12,6 +12,8 @@ def test_reads_every_variable_from_the_environment() -> None:
             "ANTHROPIC_API_KEY": "not-a-real-key",
             "SENSOR_ID": "support-1",
             "DAILY_TOKEN_BUDGET": "200000",
+            "TRUSTED_PROXY": "172.30.0.2",
+            "SPOOL_DIR": "/var/spool/tripvane",
         }
     )
     assert settings == Settings(
@@ -21,6 +23,8 @@ def test_reads_every_variable_from_the_environment() -> None:
         anthropic_api_key="not-a-real-key",
         sensor_id="support-1",
         daily_token_budget=200_000,
+        trusted_proxy="172.30.0.2",
+        spool_dir="/var/spool/tripvane",
     )
 
 

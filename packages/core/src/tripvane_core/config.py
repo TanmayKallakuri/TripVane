@@ -19,6 +19,9 @@ class Settings:
     anthropic_api_key: str | None = field(default=None, repr=False)
     sensor_id: str | None = None
     daily_token_budget: int | None = None
+    # Address of the reverse proxy in front of a sensor; only its X-Forwarded-For is honored.
+    trusted_proxy: str | None = None
+    spool_dir: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] = os.environ) -> Self:
@@ -33,4 +36,6 @@ class Settings:
             anthropic_api_key=environ.get("ANTHROPIC_API_KEY") or None,
             sensor_id=environ.get("SENSOR_ID") or None,
             daily_token_budget=budget,
+            trusted_proxy=environ.get("TRUSTED_PROXY") or None,
+            spool_dir=environ.get("SPOOL_DIR") or None,
         )

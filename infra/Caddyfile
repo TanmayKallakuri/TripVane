@@ -1,0 +1,18 @@
+# Public entry point for a sensor droplet: TLS for SENSOR_HOSTNAME, everything proxied to
+# the sensor container. Caddy replaces any X-Forwarded-For sent by the client with the
+# client address, and the sensor trusts that header only from Caddy (TRUSTED_PROXY).
+{
+	admin off
+}
+
+{$SENSOR_HOSTNAME} {
+	header -Server
+	# /health names the sensor and its archetype. It is checked from inside the droplet
+	# (the compose healthcheck), so it is not served publicly.
+	handle /health {
+		respond 404
+	}
+	handle {
+		reverse_proxy sensor:8080
+	}
+}
