@@ -31,6 +31,8 @@ from tripvane_sensors.archetypes.common import (
     anthropic_client,
     background,
     client_source,
+    from_this_host,
+    guard_egress,
     spooled_sink,
     trusted_proxy_address,
 )
@@ -147,7 +149,9 @@ def create_app(
     if settings.sensor_id is None:
         raise RuntimeError("SENSOR_ID is not set")
     sensor_id = settings.sensor_id
+    guard_egress(settings)
     trusted_proxy = trusted_proxy_address(settings)
+    client_ip_header = settings.client_ip_header
     budget = Budget.from_settings(settings)
 
     shipper: EventSink | None = None
@@ -178,13 +182,16 @@ def create_app(
     def index() -> str:
         return CHAT_PAGE
 
+    # Only for the container's own healthcheck: it names the sensor and its archetype.
     @app.get("/health")
-    def health() -> dict[str, str]:
+    def health(request: Request) -> dict[str, str]:
+        if not from_this_host(request):
+            raise HTTPException(status_code=404)
         return {"sensor_id": sensor_id, "archetype": ARCHETYPE}
 
     @app.post("/chat")
     def chat(body: ChatRequest, request: Request) -> ChatReply:
-        source = client_source(request, trusted_proxy)
+        source = client_source(request, trusted_proxy, client_ip_header)
         if not limiter.allow(str(source.ip)):
             raise HTTPException(status_code=429, detail="Too many messages")
         conversation = conversations.get(body.conversation_id)

@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import anthropic
 from fastapi import HTTPException, Request
@@ -21,6 +22,7 @@ from tripvane_core.config import Settings
 from tripvane_core.events import SessionEnded, SessionStarted
 from tripvane_core.events import Source as EventSource
 from tripvane_sensors.runtime.decoy_agent import AnyEvent, Sink
+from tripvane_sensors.runtime.egress import install_egress_guard
 from tripvane_sensors.runtime.sink import EventSink
 
 DEFAULT_SPOOL_DIR = "/var/spool/tripvane"
@@ -57,23 +59,57 @@ def trusted_proxy_address(settings: Settings) -> IPAddress | None:
     address = parse_ip(settings.trusted_proxy)
     if settings.trusted_proxy is not None and address is None:
         raise ValueError("TRUSTED_PROXY must be an IP address")
+    if address is not None and settings.client_ip_header is not None:
+        raise ValueError("set TRUSTED_PROXY or CLIENT_IP_HEADER, not both")
     return address
 
 
-def client_source(request: Request, trusted_proxy: IPAddress | None) -> EventSource:
+def guard_egress(settings: Settings) -> None:
+    """Install the in-process egress allowlist when EGRESS_ALLOWED_HOSTS is set.
+
+    Only for hosts with no network-level egress rule (runtime/egress.py). The collector
+    host must be on the list, or no event could ever be shipped.
+    """
+    if settings.egress_allowed_hosts is None:
+        return
+    hosts = frozenset(
+        host.strip().lower() for host in settings.egress_allowed_hosts.split(",") if host.strip()
+    )
+    collector = urlsplit(settings.collector_url or "").hostname
+    if collector is None or collector not in hosts:
+        raise ValueError("EGRESS_ALLOWED_HOSTS must include the host of COLLECTOR_URL")
+    install_egress_guard(hosts)
+
+
+def from_this_host(request: Request) -> bool:
+    """True for a request from inside the sensor's own container, such as its healthcheck."""
+    peer = parse_ip(request.client.host if request.client else None)
+    return peer is not None and peer.is_loopback
+
+
+def client_source(
+    request: Request, trusted_proxy: IPAddress | None, client_ip_header: str | None
+) -> EventSource:
     """The source block for a request: client IP, user agent and Accept-Language.
 
-    The client IP is the peer address, unless the peer is trusted_proxy: then it is the
-    last X-Forwarded-For entry, the one our proxy appended. X-Forwarded-For from any
-    other peer is ignored, because a client can write anything into it.
+    With client_ip_header set, the client IP is the first address in that header; set it
+    only behind a platform proxy that writes the header on every request and overwrites
+    any value the client sent. Otherwise it is the peer address, unless the peer is
+    trusted_proxy: then it is the last X-Forwarded-For entry, the one our proxy appended.
+    X-Forwarded-For from any other peer is ignored, because a client can write anything
+    into it.
     """
     peer = parse_ip(request.client.host if request.client else None)
-    if peer is None:
-        raise HTTPException(status_code=400, detail="unknown client address")
-    ip = peer
-    if trusted_proxy is not None and peer == trusted_proxy:
-        forwarded = ",".join(request.headers.getlist("x-forwarded-for"))
-        ip = parse_ip(forwarded.rsplit(",", 1)[-1]) or peer
+    ip = None
+    if client_ip_header is not None:
+        ip = parse_ip(request.headers.get(client_ip_header, "").split(",", 1)[0])
+    if ip is None:
+        if peer is None:
+            raise HTTPException(status_code=400, detail="unknown client address")
+        ip = peer
+        if trusted_proxy is not None and peer == trusted_proxy:
+            forwarded = ",".join(request.headers.getlist("x-forwarded-for"))
+            ip = parse_ip(forwarded.rsplit(",", 1)[-1]) or peer
     headers = {}
     accept_language = request.headers.get("accept-language")
     if accept_language:

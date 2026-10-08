@@ -38,6 +38,7 @@ from tripvane_sensors.archetypes.common import (
     TrackedSession,
     background,
     client_source,
+    guard_egress,
     spooled_sink,
     trusted_proxy_address,
     utc_now,
@@ -78,13 +79,19 @@ async def read_body(request: Request, limit: int) -> tuple[bytes, bool]:
 class Lookalike:
     """ASGI app that records every request and answers it from the static routes."""
 
-    def __init__(self, tracker: SessionTracker, trusted_proxy: IPAddress | None) -> None:
+    def __init__(
+        self,
+        tracker: SessionTracker,
+        trusted_proxy: IPAddress | None,
+        client_ip_header: str | None,
+    ) -> None:
         self.tracker = tracker
         self.trusted_proxy = trusted_proxy
+        self.client_ip_header = client_ip_header
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         request = Request(scope, receive)
-        source = client_source(request, self.trusted_proxy)
+        source = client_source(request, self.trusted_proxy, self.client_ip_header)
         body, truncated = await read_body(request, MAX_BODY_BYTES)
         method = request.method
         raw_path = scope.get("raw_path")
@@ -148,6 +155,7 @@ def create_app(
         settings = Settings.from_env()
     if settings.sensor_id is None:
         raise RuntimeError("SENSOR_ID is not set")
+    guard_egress(settings)
     trusted_proxy = trusted_proxy_address(settings)
     shipper = None
     if sink is None:
@@ -163,6 +171,9 @@ def create_app(
         with background(*shippers), background(tracker.reap_forever):
             yield
 
-    app = Starlette(routes=[Mount("/", app=Lookalike(tracker, trusted_proxy))], lifespan=lifespan)
+    app = Starlette(
+        routes=[Mount("/", app=Lookalike(tracker, trusted_proxy, settings.client_ip_header))],
+        lifespan=lifespan,
+    )
     app.state.tracker = tracker
     return app

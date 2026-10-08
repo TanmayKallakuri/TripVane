@@ -43,6 +43,7 @@ def lookup_router(
     engine: Engine,
     limiter: DailyLimiter,
     trusted_proxy: IPAddress | None,
+    client_ip_header: str | None,
     now: Callable[[], datetime],
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
@@ -62,7 +63,7 @@ def lookup_router(
         if key_id is not None:
             client, limit = key_client(key_id), KEY_DAILY_LIMIT
         else:
-            ip = client_ip(request, trusted_proxy)
+            ip = client_ip(request, trusted_proxy, client_ip_header)
             client, limit = (ip_client(ip) if ip else "ip:unknown"), PUBLIC_DAILY_LIMIT
         if not limiter.allow(client, limit):
             raise HTTPException(

@@ -252,6 +252,18 @@ def test_source_ignores_x_forwarded_for_from_other_peers_when_a_proxy_is_trusted
     assert str(sensor.inputs()[0].source.ip) == CLIENT_IP
 
 
+def test_source_uses_the_client_ip_header_behind_a_platform_proxy() -> None:
+    settings = Settings(
+        sensor_id="support-test", daily_token_budget=0, client_ip_header="CF-Connecting-IP"
+    )
+    sensor = Sensor([], settings)
+    platform = sensor.client("10.1.2.3")
+    _chat(platform, "hello there, a question", **{"CF-Connecting-IP": "203.0.113.9"})
+    # Without the header the peer address is all there is.
+    _chat(platform, "and a second question")
+    assert [str(event.source.ip) for event in sensor.inputs()] == ["203.0.113.9", "10.1.2.3"]
+
+
 def test_source_falls_back_to_the_proxy_address_on_a_malformed_header() -> None:
     sensor = Sensor(
         [], Settings(sensor_id="support-test", daily_token_budget=0, trusted_proxy=PROXY)
@@ -272,9 +284,10 @@ def test_rate_limit_applies_to_the_forwarded_client_address() -> None:
     assert _chat(proxy, "first from B", **{"X-Forwarded-For": "203.0.113.2"}).status_code == 200
 
 
-def test_health_reports_the_sensor(sensor: Sensor) -> None:
-    response = sensor.client().get("/health")
+def test_health_answers_only_the_containers_own_healthcheck(sensor: Sensor) -> None:
+    response = sensor.client("127.0.0.1").get("/health")
     assert response.json() == {"sensor_id": "support-test", "archetype": "support"}
+    assert sensor.client().get("/health").status_code == 404
 
 
 def test_index_serves_the_chat_page_and_no_api_docs(sensor: Sensor) -> None:
@@ -296,6 +309,24 @@ def test_index_serves_the_chat_page_and_no_api_docs(sensor: Sensor) -> None:
         (
             Settings(sensor_id="s", daily_token_budget=10, trusted_proxy="caddy"),
             "TRUSTED_PROXY",
+        ),
+        (
+            Settings(
+                sensor_id="s",
+                daily_token_budget=10,
+                trusted_proxy=PROXY,
+                client_ip_header="X-Real-IP",
+            ),
+            "not both",
+        ),
+        (
+            Settings(
+                sensor_id="s",
+                daily_token_budget=10,
+                collector_url="https://collector.example.test",
+                egress_allowed_hosts="api.anthropic.com",
+            ),
+            "EGRESS_ALLOWED_HOSTS",
         ),
     ],
 )

@@ -7,10 +7,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 
+from tripvane_api.app import create_app
 from tripvane_api.cli import main
 from tripvane_api.client import parse_ip
 from tripvane_api.keys import KEY_PREFIX, create_api_key, hash_key, key_id_for, revoke_api_key
 from tripvane_api.limits import KEY_DAILY_LIMIT, DailyLimiter, ip_client, key_client
+from tripvane_core.config import Settings
 from tripvane_core.models import ApiKey
 
 LOOKUP = "/v1/lookup/ip/203.0.113.7"
@@ -71,6 +73,15 @@ def test_limit_uses_the_forwarded_address_only_behind_the_trusted_proxy(
     for _ in range(49):
         direct.get(LOOKUP, headers={"X-Forwarded-For": f"203.0.113.{_}"})
     assert direct.get(LOOKUP).status_code == 429
+
+
+def test_limit_uses_the_client_ip_header_when_configured(grid_engine: Engine) -> None:
+    api = create_app(grid_engine, Settings(client_ip_header="X-Real-IP"))
+    platform = TestClient(api, client=("10.1.2.3", 50000))
+    for _ in range(50):
+        platform.get(LOOKUP, headers={"X-Real-IP": "203.0.113.210"})
+    assert platform.get(LOOKUP, headers={"X-Real-IP": "203.0.113.210"}).status_code == 429
+    assert platform.get(LOOKUP, headers={"X-Real-IP": "203.0.113.211"}).status_code == 200
 
 
 def test_api_key_limit_is_5000_per_day(
