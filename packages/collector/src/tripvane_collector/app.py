@@ -6,9 +6,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from sqlalchemy import Engine
 
 from tripvane_collector.auth import sensor_for_token
-from tripvane_collector.db import make_engine
 from tripvane_collector.ingest import IngestError, ingest
 from tripvane_core.config import Settings
+from tripvane_core.db import make_engine
 from tripvane_core.events import Event
 
 _UNAUTHORIZED = HTTPException(
@@ -16,12 +16,17 @@ _UNAUTHORIZED = HTTPException(
 )
 
 
-def create_app(engine: Engine | None = None) -> FastAPI:
+def create_app(engine: Engine | None = None, settings: Settings | None = None) -> FastAPI:
+    if settings is None:
+        settings = Settings.from_env()
     if engine is None:
-        database_url = Settings.from_env().database_url
-        if database_url is None:
+        if settings.database_url is None:
             raise RuntimeError("DATABASE_URL is not set")
-        engine = make_engine(database_url)
+        engine = make_engine(settings.database_url)
+    # Needed to recognise canary secrets in tool calls; checked now, not on the first call.
+    canary_key = settings.canary_hmac_key
+    if canary_key is None:
+        raise RuntimeError("CANARY_HMAC_KEY is not set")
 
     app = FastAPI(title="tripvane collector")
 
@@ -41,7 +46,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     ) -> dict[str, int]:
         try:
             with engine.begin() as conn:
-                result = ingest(conn, sensor_id, events)
+                result = ingest(conn, sensor_id, events, canary_key=canary_key)
         except IngestError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"inserted": result.inserted, "duplicates": result.duplicates}

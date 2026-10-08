@@ -1,0 +1,102 @@
+# Infrastructure lookalike sensor behind Caddy, deployed by infra/deploy.sh into
+# /opt/tripvane/<SENSOR>/ on the droplet next to Caddyfile (from Caddyfile.infra),
+# squid.conf, egress-allowed-hosts.txt and .env (the sensor's settings, written from
+# .env.<SENSOR>).
+#
+# Caddy serves the lookalikes on the sensor hostname over HTTPS and, in plain HTTP, on
+# the ports the real products listen on by default, because that is where scanners look
+# for them: 11434 (Ollama), 3000 and 8080 (Open WebUI), 4000 (LiteLLM), 7860 (Langflow).
+#
+# The egress rule is the one in compose.support.yml: the sensor sits on the internal
+# `sensor` network with no route out, its only exit is the Squid proxy `egress`, which
+# tunnels to port 443 of the hosts in egress-allowed-hosts.txt and nothing else, and its
+# upstream DNS server is 127.0.0.1. This sensor never calls a model, so deploy.sh lists
+# only the collector host there.
+# The sensor also runs read-only, as a non-root user, with every capability dropped.
+
+name: tripvane-infra
+
+services:
+  sensor:
+    image: tripvane-sensor:infra
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HTTPS_PROXY: http://egress:3128
+      TRUSTED_PROXY: 172.30.0.2
+      SPOOL_DIR: /var/spool/tripvane
+    networks:
+      sensor:
+        ipv4_address: 172.30.0.10
+    dns: 127.0.0.1
+    volumes:
+      - spool:/var/spool/tripvane
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        # /health is a decoy endpoint here (LiteLLM's), so the check only connects.
+        - "import socket; socket.create_connection(('127.0.0.1', 8080), timeout=3).close()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - egress
+
+  egress:
+    image: ubuntu/squid:6.6-24.04_edge
+    restart: unless-stopped
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./egress-allowed-hosts.txt:/etc/squid/allowed-hosts.txt:ro
+    networks:
+      sensor:
+        ipv4_address: 172.30.0.3
+      edge: {}
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+      - "3000:3000"
+      - "4000:4000"
+      - "7860:7860"
+      - "8080:8080"
+      - "11434:11434"
+    environment:
+      SENSOR_HOSTNAME: ${SENSOR_HOSTNAME:?SENSOR_HOSTNAME must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      sensor:
+        ipv4_address: 172.30.0.2
+      edge: {}
+    depends_on:
+      - sensor
+
+networks:
+  sensor:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  edge: {}
+
+volumes:
+  spool: {}
+  caddy_data: {}
+  caddy_config: {}

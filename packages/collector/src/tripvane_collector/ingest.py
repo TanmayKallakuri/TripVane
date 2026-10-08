@@ -2,18 +2,19 @@
 
 Each event is keyed on (sensor_id, session_id, event_seq). A duplicate delivery is a
 no-op: the event row is not inserted again and its side effects (sources, payloads,
-domains, session links, session end) are not applied again. All writes use database
-upserts so concurrent deliveries of the same batch cannot double count.
+domains, session links, canary hits, session end) are not applied again. All writes use
+database upserts so concurrent deliveries of the same batch cannot double count.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Column, ColumnElement, Connection, Table, func, update
+from sqlalchemy import Column, ColumnElement, Connection, Table, func, insert, select, update
 from sqlalchemy.dialects import postgresql, sqlite
 
-from tripvane_collector import models
+from tripvane_core import models
+from tripvane_core.canary_formats import find_canary_secrets
 from tripvane_core.domains import extract_domains, extract_domains_from_value
 from tripvane_core.events import Event, InputReceived, SessionEnded, ToolCallAttempted
 from tripvane_core.hashing import normalize
@@ -25,6 +26,8 @@ payloads: Table = models.Payload.__table__  # type: ignore[assignment]
 session_sources: Table = models.SessionSource.__table__  # type: ignore[assignment]
 domains: Table = models.Domain.__table__  # type: ignore[assignment]
 session_domains: Table = models.SessionDomain.__table__  # type: ignore[assignment]
+canaries: Table = models.Canary.__table__  # type: ignore[assignment]
+canary_hits: Table = models.CanaryHit.__table__  # type: ignore[assignment]
 
 
 class IngestError(Exception):
@@ -40,8 +43,13 @@ class IngestResult:
     duplicates: int
 
 
-def ingest(conn: Connection, sensor_id: str, events: Sequence[Event]) -> IngestResult:
-    """Store a batch for the authenticated sensor. Raises IngestError; caller rolls back."""
+def ingest(
+    conn: Connection, sensor_id: str, events: Sequence[Event], *, canary_key: str
+) -> IngestResult:
+    """Store a batch for the authenticated sensor. Raises IngestError; caller rolls back.
+
+    canary_key is CANARY_HMAC_KEY, used to recognise canary secrets in tool calls.
+    """
     for event in events:
         if event.sensor_id != sensor_id:
             raise IngestError(403, f"event sensor_id {event.sensor_id!r} does not match token")
@@ -58,6 +66,7 @@ def ingest(conn: Connection, sensor_id: str, events: Sequence[Event]) -> IngestR
             _link_domains(conn, event, extract_domains(event.raw_text))
         elif isinstance(event, ToolCallAttempted):
             _link_domains(conn, event, extract_domains_from_value(event.arguments))
+            _record_canary_hits(conn, event, canary_key)
         elif isinstance(event, SessionEnded):
             _end_session(conn, event)
     return IngestResult(inserted=inserted, duplicates=len(events) - inserted)
@@ -166,6 +175,25 @@ def _link_domains(conn: Connection, event: Event, found: set[str]) -> None:
             domain_id=domain_id, session_id=event.session_id
         )
         conn.execute(link.on_conflict_do_nothing())
+
+
+def _record_canary_hits(conn: Connection, event: ToolCallAttempted, canary_key: str) -> None:
+    """One canary_hit per canary secret in the call's arguments.
+
+    The hit is linked to the canaries row whose token is the secret; a secret with a
+    valid checksum but no row (a canary minted elsewhere, or planted by hand) is recorded
+    with a null canary_id. The secret is stored either way.
+    """
+    for secret in find_canary_secrets(event.arguments, canary_key):
+        canary_id = conn.scalar(select(canaries.c.id).where(canaries.c.token == secret))
+        conn.execute(
+            insert(canary_hits).values(
+                canary_id=canary_id,
+                ts=event.ts,
+                source=event.source.model_dump(mode="json"),
+                secret=secret,
+            )
+        )
 
 
 def _end_session(conn: Connection, event: SessionEnded) -> None:

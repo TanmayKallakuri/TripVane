@@ -4,6 +4,7 @@ version = "0.0.0"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.11",
+    "sqlalchemy>=2.0.40",
 ]
 
 [build-system]
