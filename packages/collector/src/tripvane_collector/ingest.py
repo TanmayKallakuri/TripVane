@@ -2,8 +2,8 @@
 
 Each event is keyed on (sensor_id, session_id, event_seq). A duplicate delivery is a
 no-op: the event row is not inserted again and its side effects (sources, payloads,
-session end) are not applied again. All writes use database upserts so concurrent
-deliveries of the same batch cannot double count.
+domains, session links, session end) are not applied again. All writes use database
+upserts so concurrent deliveries of the same batch cannot double count.
 """
 
 from collections.abc import Sequence
@@ -14,13 +14,17 @@ from sqlalchemy import Column, ColumnElement, Connection, Table, func, update
 from sqlalchemy.dialects import postgresql, sqlite
 
 from tripvane_collector import models
-from tripvane_core.events import Event, InputReceived, SessionEnded
+from tripvane_core.domains import extract_domains, extract_domains_from_value
+from tripvane_core.events import Event, InputReceived, SessionEnded, ToolCallAttempted
 from tripvane_core.hashing import normalize
 
 sessions: Table = models.Session.__table__  # type: ignore[assignment]
 events_table: Table = models.Event.__table__  # type: ignore[assignment]
 sources: Table = models.Source.__table__  # type: ignore[assignment]
 payloads: Table = models.Payload.__table__  # type: ignore[assignment]
+session_sources: Table = models.SessionSource.__table__  # type: ignore[assignment]
+domains: Table = models.Domain.__table__  # type: ignore[assignment]
+session_domains: Table = models.SessionDomain.__table__  # type: ignore[assignment]
 
 
 class IngestError(Exception):
@@ -44,13 +48,18 @@ def ingest(conn: Connection, sensor_id: str, events: Sequence[Event]) -> IngestR
     inserted = 0
     for event in events:
         _upsert_session(conn, event)
-        if _insert_event(conn, event):
-            inserted += 1
-            _upsert_source(conn, event)
-            if isinstance(event, InputReceived):
-                _upsert_payload(conn, event)
-            elif isinstance(event, SessionEnded):
-                _end_session(conn, event)
+        event_id = _insert_event(conn, event)
+        if event_id is None:
+            continue
+        inserted += 1
+        _link_source(conn, event)
+        if isinstance(event, InputReceived):
+            _link_payload(conn, event, event_id)
+            _link_domains(conn, event, extract_domains(event.raw_text))
+        elif isinstance(event, ToolCallAttempted):
+            _link_domains(conn, event, extract_domains_from_value(event.arguments))
+        elif isinstance(event, SessionEnded):
+            _end_session(conn, event)
     return IngestResult(inserted=inserted, duplicates=len(events) - inserted)
 
 
@@ -85,7 +94,8 @@ def _upsert_session(conn: Connection, event: Event) -> None:
         raise IngestError(409, f"session {event.session_id!r} belongs to another sensor")
 
 
-def _insert_event(conn: Connection, event: Event) -> bool:
+def _insert_event(conn: Connection, event: Event) -> int | None:
+    """Insert the event and return its row id, or None if it was already stored."""
     stmt = (
         _insert(conn, events_table)
         .values(
@@ -99,10 +109,10 @@ def _insert_event(conn: Connection, event: Event) -> bool:
         .on_conflict_do_nothing(index_elements=["sensor_id", "session_id", "event_seq"])
         .returning(events_table.c.id)
     )
-    return conn.execute(stmt).first() is not None
+    return conn.execute(stmt).scalar()
 
 
-def _upsert_source(conn: Connection, event: Event) -> None:
+def _link_source(conn: Connection, event: Event) -> None:
     stmt = _insert(conn, sources).values(
         ip=str(event.source.ip), asn=event.source.asn, first_seen=event.ts, last_seen=event.ts
     )
@@ -114,10 +124,12 @@ def _upsert_source(conn: Connection, event: Event) -> None:
             "last_seen": _later(conn, sources.c.last_seen, stmt.excluded.last_seen),
         },
     )
-    conn.execute(stmt)
+    source_id = conn.execute(stmt.returning(sources.c.id)).scalar_one()
+    link = _insert(conn, session_sources).values(source_id=source_id, session_id=event.session_id)
+    conn.execute(link.on_conflict_do_nothing())
 
 
-def _upsert_payload(conn: Connection, event: InputReceived) -> None:
+def _link_payload(conn: Connection, event: InputReceived, event_id: int) -> None:
     stmt = _insert(conn, payloads).values(
         payload_hash=event.payload_hash,
         normalized_text=normalize(event.raw_text),
@@ -133,7 +145,27 @@ def _upsert_payload(conn: Connection, event: InputReceived) -> None:
             "last_seen": _later(conn, payloads.c.last_seen, stmt.excluded.last_seen),
         },
     )
-    conn.execute(stmt)
+    payload_id = conn.execute(stmt.returning(payloads.c.id)).scalar_one()
+    conn.execute(
+        update(events_table).where(events_table.c.id == event_id).values(payload_id=payload_id)
+    )
+
+
+def _link_domains(conn: Connection, event: Event, found: set[str]) -> None:
+    for domain in sorted(found):
+        stmt = _insert(conn, domains).values(domain=domain, first_seen=event.ts, last_seen=event.ts)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[domains.c.domain],
+            set_={
+                "first_seen": _earlier(conn, domains.c.first_seen, stmt.excluded.first_seen),
+                "last_seen": _later(conn, domains.c.last_seen, stmt.excluded.last_seen),
+            },
+        )
+        domain_id = conn.execute(stmt.returning(domains.c.id)).scalar_one()
+        link = _insert(conn, session_domains).values(
+            domain_id=domain_id, session_id=event.session_id
+        )
+        conn.execute(link.on_conflict_do_nothing())
 
 
 def _end_session(conn: Connection, event: SessionEnded) -> None:

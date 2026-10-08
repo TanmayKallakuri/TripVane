@@ -83,6 +83,9 @@ class ModelTurn(_EventBase):
     model: str
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
+    # Prompt-cache usage is reported and billed separately from input_tokens.
+    cache_creation_input_tokens: int = Field(ge=0)
+    cache_read_input_tokens: int = Field(ge=0)
     stop_reason: str
     assistant_text: str
 

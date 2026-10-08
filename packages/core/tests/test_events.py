@@ -46,6 +46,8 @@ def test_discriminated_union_parses_every_event_type() -> None:
             "model": "claude-haiku-5-5",
             "input_tokens": 120,
             "output_tokens": 40,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 900,
             "stop_reason": "tool_use",
             "assistant_text": "",
         },
@@ -127,6 +129,21 @@ def test_event_seq_and_token_counts_cannot_be_negative() -> None:
             model="claude-haiku-5-5",
             input_tokens=-1,
             output_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            stop_reason="end_turn",
+            assistant_text="",
+        )
+
+
+def test_model_turn_requires_cache_token_counts() -> None:
+    with pytest.raises(ValidationError, match="cache_read_input_tokens"):
+        ModelTurn(
+            **base(),
+            model="claude-haiku-5-5",
+            input_tokens=10,
+            output_tokens=5,
+            cache_creation_input_tokens=0,
             stop_reason="end_turn",
             assistant_text="",
         )

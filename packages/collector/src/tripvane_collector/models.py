@@ -1,4 +1,9 @@
-"""Database schema. Columns are exactly those in the milestone 1 specification."""
+"""Database schema: the milestone 1 tables plus the links frozen at schema review.
+
+Additions over the milestone 1 prompt (see tripvane-reviews/m1-schema-review.md):
+events.payload_id, session_sources, domains and session_domains, so later lookups
+join on indexed columns instead of reading event JSON.
+"""
 
 from datetime import datetime
 from typing import Any
@@ -68,6 +73,8 @@ class Event(Base):
     type: Mapped[str] = mapped_column(String(32))
     ts: Mapped[datetime] = mapped_column(Timestamp)
     payload: Mapped[dict[str, Any]] = mapped_column(Json)
+    # Set for input_received events: links a payload to its sessions and sensors.
+    payload_id: Mapped[int | None] = mapped_column(ForeignKey("payloads.id"), index=True)
 
 
 class Source(Base):
@@ -78,6 +85,33 @@ class Source(Base):
     asn: Mapped[int | None] = mapped_column(BigInteger)
     first_seen: Mapped[datetime] = mapped_column(Timestamp)
     last_seen: Mapped[datetime] = mapped_column(Timestamp)
+
+
+class SessionSource(Base):
+    """Every source IP that sent an event in a session."""
+
+    __tablename__ = "session_sources"
+
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), primary_key=True)
+
+
+class Domain(Base):
+    """Domains found in URLs and email addresses in inputs and tool call arguments."""
+
+    __tablename__ = "domains"
+
+    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(253), unique=True)
+    first_seen: Mapped[datetime] = mapped_column(Timestamp)
+    last_seen: Mapped[datetime] = mapped_column(Timestamp)
+
+
+class SessionDomain(Base):
+    __tablename__ = "session_domains"
+
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id"), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), primary_key=True)
 
 
 class Payload(Base):

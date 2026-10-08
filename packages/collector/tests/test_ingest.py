@@ -4,7 +4,15 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, func, select
 
-from tripvane_collector.models import Event, Payload, Session, Source
+from tripvane_collector.models import (
+    Domain,
+    Event,
+    Payload,
+    Session,
+    SessionDomain,
+    SessionSource,
+    Source,
+)
 from tripvane_core.hashing import payload_hash
 
 SENSOR_ID = "support-1"
@@ -37,6 +45,8 @@ def session_batch(session_id: str = "sess-1", sensor_id: str = SENSOR_ID) -> lis
             model="claude-haiku-5-5",
             input_tokens=310,
             output_tokens=42,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=1200,
             stop_reason="tool_use",
             assistant_text="Let me check that for you.",
         ),
@@ -196,3 +206,37 @@ def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_ingest_links_sources_payloads_and_domains(
+    client: TestClient, engine: Engine, auth: dict[str, str]
+) -> None:
+    batch = session_batch()
+    batch[3]["source"]["ip"] = "198.51.100.20"
+    batch[3]["arguments"] = {"to": "drop@exfil.example.com", "body": "see https://paste.example"}
+    client.post("/ingest", json=batch, headers=auth)
+    client.post("/ingest", json=batch, headers=auth)
+
+    with engine.connect() as conn:
+        linked_ips = conn.scalars(
+            select(Source.ip)
+            .join(SessionSource, SessionSource.source_id == Source.id)
+            .where(SessionSource.session_id == "sess-1")
+            .order_by(Source.ip)
+        ).all()
+        payload_links = conn.execute(
+            select(Event.type, Event.payload_id).where(Event.payload_id.is_not(None))
+        ).all()
+        payload_id = conn.scalar(select(Payload.id))
+        domains = conn.scalars(
+            select(Domain.domain)
+            .join(SessionDomain, SessionDomain.domain_id == Domain.id)
+            .where(SessionDomain.session_id == "sess-1")
+            .order_by(Domain.domain)
+        ).all()
+
+    assert linked_ips == ["198.51.100.20", "203.0.113.7"]
+    assert payload_links == [("input_received", payload_id)]
+    assert domains == ["exfil.example.com", "paste.example"]
+    assert count(engine, SessionSource) == 2
+    assert count(engine, SessionDomain) == 2

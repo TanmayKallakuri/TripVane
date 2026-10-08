@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-10-08 07:16:08.310557
+Create Date: 2026-10-08 07:55:25.472622
 """
 
 from collections.abc import Sequence
@@ -30,6 +30,15 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_canaries")),
         sa.UniqueConstraint("token", name=op.f("uq_canaries_token")),
+    )
+    op.create_table(
+        "domains",
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), nullable=False),
+        sa.Column("domain", sa.String(length=253), nullable=False),
+        sa.Column("first_seen", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_seen", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_domains")),
+        sa.UniqueConstraint("domain", name=op.f("uq_domains_domain")),
     )
     op.create_table(
         "payloads",
@@ -124,6 +133,12 @@ def upgrade() -> None:
         sa.Column(
             "payload", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False
         ),
+        sa.Column(
+            "payload_id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), nullable=True
+        ),
+        sa.ForeignKeyConstraint(
+            ["payload_id"], ["payloads.id"], name=op.f("fk_events_payload_id_payloads")
+        ),
         sa.ForeignKeyConstraint(
             ["sensor_id"], ["sensors.id"], name=op.f("fk_events_sensor_id_sensors")
         ),
@@ -138,9 +153,43 @@ def upgrade() -> None:
             name=op.f("uq_events_sensor_id_session_id_event_seq"),
         ),
     )
+    op.create_index(op.f("ix_events_payload_id"), "events", ["payload_id"], unique=False)
+
+    op.create_table(
+        "session_domains",
+        sa.Column(
+            "domain_id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), nullable=False
+        ),
+        sa.Column("session_id", sa.String(length=128), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["domain_id"], ["domains.id"], name=op.f("fk_session_domains_domain_id_domains")
+        ),
+        sa.ForeignKeyConstraint(
+            ["session_id"], ["sessions.id"], name=op.f("fk_session_domains_session_id_sessions")
+        ),
+        sa.PrimaryKeyConstraint("domain_id", "session_id", name=op.f("pk_session_domains")),
+    )
+    op.create_table(
+        "session_sources",
+        sa.Column(
+            "source_id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), nullable=False
+        ),
+        sa.Column("session_id", sa.String(length=128), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["session_id"], ["sessions.id"], name=op.f("fk_session_sources_session_id_sessions")
+        ),
+        sa.ForeignKeyConstraint(
+            ["source_id"], ["sources.id"], name=op.f("fk_session_sources_source_id_sources")
+        ),
+        sa.PrimaryKeyConstraint("source_id", "session_id", name=op.f("pk_session_sources")),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("session_sources")
+    op.drop_table("session_domains")
+    op.drop_index(op.f("ix_events_payload_id"), table_name="events")
+
     op.drop_table("events")
     op.drop_table("sessions")
     op.drop_table("payload_tags")
@@ -149,4 +198,5 @@ def downgrade() -> None:
     op.drop_table("sources")
     op.drop_table("sensors")
     op.drop_table("payloads")
+    op.drop_table("domains")
     op.drop_table("canaries")
