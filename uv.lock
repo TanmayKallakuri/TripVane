@@ -1266,6 +1266,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
     { name = "tripvane-core" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -1274,6 +1275,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "sqlalchemy", specifier = ">=2.0.40" },
     { name = "tripvane-core", editable = "packages/core" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
 [[package]]
@@ -1286,6 +1288,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
     { name = "tripvane-core" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -1295,6 +1298,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "sqlalchemy", specifier = ">=2.0.40" },
     { name = "tripvane-core", editable = "packages/core" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
 [[package]]
@@ -1318,6 +1322,16 @@ requires-dist = [
 name = "tripvane-plugin"
 version = "0.0.0"
 source = { editable = "packages/plugin" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "mcp" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx2", specifier = ">=2.13.1" },
+    { name = "mcp", specifier = ">=2.3.0" },
+]
 
 [[package]]
 name = "tripvane-sensors"

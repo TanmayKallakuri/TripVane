@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tripvane": {
+      "command": "uvx",
+      "args": ["--from", "${CLAUDE_PLUGIN_ROOT}", "tripvane-plugin"],
+      "env": {
+        "TRIPVANE_API_URL": "${user_config.api_url}",
+        "TRIPVANE_API_KEY": "${user_config.api_key}"
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "sqlalchemy>=2.0.40",
     "tripvane-core",
+    "uvicorn>=0.54.0",
 ]
 
 [build-system]

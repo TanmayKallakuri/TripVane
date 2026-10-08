@@ -1,0 +1,30 @@
+{
+  "name": "tripvane",
+  "displayName": "Tripvane",
+  "version": "0.1.0",
+  "description": "Look up IP addresses, domains and payloads on the Tripvane deception grid before trusting an unfamiliar MCP server or agent-directed text.",
+  "author": {
+    "name": "Tripvane"
+  },
+  "keywords": [
+    "security",
+    "prompt-injection",
+    "threat-intelligence",
+    "mcp"
+  ],
+  "userConfig": {
+    "api_url": {
+      "type": "string",
+      "title": "Tripvane API URL",
+      "description": "Base URL of the Tripvane lookup API, for example https://api.tripvane.example",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "title": "Tripvane API key",
+      "description": "Optional. Without a key the API allows 50 lookups a day per IP address; with one, 5,000 a day.",
+      "sensitive": true,
+      "default": ""
+    }
+  }
+}

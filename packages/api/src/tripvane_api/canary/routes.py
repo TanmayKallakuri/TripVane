@@ -5,17 +5,15 @@ response never tells the caller anything. A known token records a canary_hit wit
 request's source block; an unknown one records nothing.
 """
 
-import ipaddress
 from collections.abc import Callable
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import Engine, insert, select
 
+from tripvane_api.client import IPAddress, client_ip
 from tripvane_core.events import Source
 from tripvane_core.models import Canary, CanaryHit
-
-IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 
 def canary_router(
@@ -40,33 +38,15 @@ def canary_router(
     return router
 
 
-def parse_ip(value: str | None) -> IPAddress | None:
-    """The address in value, with IPv4-mapped IPv6 addresses unwrapped; None if invalid."""
-    if not value:
-        return None
-    try:
-        address = ipaddress.ip_address(value.strip())
-    except ValueError:
-        return None
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
-        return address.ipv4_mapped
-    return address
-
-
 def request_source(request: Request, trusted_proxy: IPAddress | None) -> Source | None:
     """The source block for a request, or None when the client address is unknown.
 
-    The client IP is the peer address, unless the peer is trusted_proxy: then it is the
-    last X-Forwarded-For entry, the one our proxy appended. Referer is kept because for a
-    canary URL it says where the planted document was opened.
+    The client IP comes from client_ip (X-Forwarded-For only from trusted_proxy). Referer
+    is kept because for a canary URL it says where the planted document was opened.
     """
-    peer = parse_ip(request.client.host if request.client else None)
-    if peer is None:
+    ip = client_ip(request, trusted_proxy)
+    if ip is None:
         return None
-    ip = peer
-    if trusted_proxy is not None and peer == trusted_proxy:
-        forwarded = ",".join(request.headers.getlist("x-forwarded-for"))
-        ip = parse_ip(forwarded.rsplit(",", 1)[-1]) or peer
     headers = {
         name: value
         for name in ("Accept-Language", "Referer")

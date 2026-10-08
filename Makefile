@@ -1,4 +1,4 @@
-.PHONY: test replay deploy cost-report
+.PHONY: test replay deploy deploy-core cost-report
 
 test:
 	uv run --locked --all-packages ruff check .
@@ -13,6 +13,11 @@ deploy:
 	@if [ -z "$(SENSOR)" ] || [ -z "$(HOST)" ]; then \
 		echo "usage: make deploy SENSOR=support HOST=1.2.3.4" >&2; exit 2; fi
 	infra/deploy.sh "$(SENSOR)" "$(HOST)"
+
+deploy-core:
+	@if [ -z "$(HOST)" ]; then \
+		echo "usage: make deploy-core HOST=1.2.3.4" >&2; exit 2; fi
+	infra/deploy-core.sh "$(HOST)"
 
 cost-report:
 	@echo "cost-report: not implemented"
