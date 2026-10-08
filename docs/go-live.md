@@ -19,7 +19,7 @@ Never put a real credential in this file, in a commit, in an issue, in the proje
 
 Working defaults, from the Coordinator's questions and the Domain and hosting options thread. Anything still open says so.
 
-1. **Should the repository stay public? (open; both paths below)** It is public today, so anyone can read the decoy prompts, the fictional company and assistant names, the infrastructure lookalike responses and the canary formats, and recognise every decoy on sight. **Recommended: make it private before the first sensor goes live.** The servers fetch the code themselves (section 3), so a private repository needs one more variable, a read-only GitHub token (2.5), which then also sits in each server's user data.
+1. **The repository stays public (Phoenix's answer, 2026-10-08).** Anyone can read the decoy prompts, the fictional company and assistant names, the infrastructure lookalike responses and the canary formats, and recognise every decoy on sight. This is an accepted risk, not an open question. The servers fetch the code, including `infra/stage.sh` and `infra/user-data.sh`, from public `main` on first boot (section 3), so no GitHub token is needed.
 2. **Domains: two `.com` domains at Cloudflare Registrar, all records DNS only.** Certificates for every hostname are published in Certificate Transparency logs, and the lookup API's own `/docs` page says "Tripvane lookup API". A Tripvane API on the decoy domain would therefore expose every sensor as a decoy. This runbook keeps the decoy domain for sensors only and puts the API with the collector and the canary host on the plain domain, which differs from the hosting thread's suggestion of API and sensors together on the decoy domain.
 
    | Role | Hostname | Server |
@@ -96,7 +96,6 @@ In [Project settings](#project-settings/environment), open the Cloud environment
 | `TRIPVANE_DATABASE_URL` | The session pooler string from 2.2 | Written into the core server as `DATABASE_URL` |
 | `LINODE_TOKEN` | The Linode token | Creating the servers |
 | `CLOUDFLARE_API_TOKEN` | The Cloudflare token | Creating the DNS records |
-| `TRIPVANE_GITHUB_READ_TOKEN` | Only if the repository is private: a fine-grained token with Contents read-only on this one repository, with an expiry | Lets the servers fetch the code |
 
 The `TRIPVANE_` prefix keeps Claude Code from taking the Anthropic key as its own login; the deployment renames the values to what the code reads.
 
@@ -125,7 +124,7 @@ Run in a fresh session, in a checkout of `main` that contains `infra/user-data.s
 1. The variables of 2.5 are set: `for v in TRIPVANE_ANTHROPIC_API_KEY TRIPVANE_DATABASE_URL LINODE_TOKEN CLOUDFLARE_API_TOKEN; do [ -n "${!v:-}" ] && echo "$v set" || echo "$v MISSING"; done`
 2. Both APIs answer: `curl -sS -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $LINODE_TOKEN" https://api.linode.com/v4/profile` (expect 200) and `curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify` (expect `"status":"active"`).
 3. The Supabase connector lists the project whose ref appears in `TRIPVANE_DATABASE_URL` (the user name is `postgres.<project-ref>`).
-4. The commit the servers will fetch: `export REF=$(git rev-parse origin/main)`. If the repository is private: `export REPO_URL="https://x-access-token:${TRIPVANE_GITHUB_READ_TOKEN}@github.com/TanmayKallakuri/TripVane.git"`; otherwise leave `REPO_URL` unset (the public URL is the default).
+4. The commit the servers will fetch: `export REF=$(git rev-parse origin/main)`. Leave `REPO_URL` unset; the public repository URL is the default.
 
 ### 4.1 Settings files and registration SQL
 
@@ -447,7 +446,7 @@ The DRAFT rule: only a person removes the `DRAFT` line, after checking every fig
 
 ### 6.5 During the week: ten scrubbed sessions for `fixtures/`
 
-The plan asks for ten real sessions, scrubbed, added to `fixtures/` so `make replay` reflects real traffic. While the repository is public, scrubbing is publishing.
+The plan asks for ten real sessions, scrubbed, added to `fixtures/` so `make replay` reflects real traffic. The repository is public, so scrubbing is publishing.
 
 Which sessions qualify: `make replay` runs each `fixtures/<name>.jsonl` through the decoy agent with the six standard decoy tools and `fixtures/system.md`, and needs exactly one `input_received` per file. Support sessions fit. An MCP agent run fits only if every tool it called is one of the six standard tools (inferred from `runtime/replay.py`, which loads `STANDARD_TOOLS`). GitHub sessions do not fit the GitHub replay, which needs the original webhook body; the database stores only the text.
 
