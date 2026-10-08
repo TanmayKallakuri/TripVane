@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quillstone Ledger Help Center</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #f4f6f8; color: #1d2733; }
+  header { background: #1f4e5f; color: #fff; padding: 16px 24px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; font-size: 14px; opacity: 0.85; }
+  main { max-width: 720px; margin: 24px auto; padding: 0 16px; }
+  #log { background: #fff; border: 1px solid #d5dce3; border-radius: 8px; padding: 16px;
+         height: 420px; overflow-y: auto; }
+  .msg { margin: 0 0 12px; line-height: 1.4; white-space: pre-wrap; }
+  .you { text-align: right; }
+  .you span { background: #dbeef4; }
+  .bot span { background: #eef1f4; }
+  .msg span { display: inline-block; padding: 8px 12px; border-radius: 8px; max-width: 85%;
+              text-align: left; }
+  form { display: flex; gap: 8px; margin-top: 12px; }
+  textarea { flex: 1; font: inherit; padding: 8px; border: 1px solid #c3ccd5; border-radius: 6px;
+             resize: vertical; min-height: 44px; }
+  button { font: inherit; padding: 0 20px; border: 0; border-radius: 6px; background: #1f4e5f;
+           color: #fff; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Quillstone Ledger Help Center</h1>
+  <p>Chat with Juniper, our support assistant. Available around the clock.</p>
+</header>
+<main>
+  <div id="log">
+    <p class="msg bot"><span>Hi, I'm Juniper. How can I help with Quillstone Ledger today?</span></p>
+  </div>
+  <form id="form">
+    <textarea id="message" maxlength="4000" placeholder="Type your question" required></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
+</main>
+<script>
+  const conversationId = crypto.randomUUID();
+  const log = document.getElementById("log");
+  const form = document.getElementById("form");
+  const input = document.getElementById("message");
+  const send = document.getElementById("send");
+
+  function show(text, who) {
+    const p = document.createElement("p");
+    p.className = "msg " + who;
+    const span = document.createElement("span");
+    span.textContent = text;
+    p.appendChild(span);
+    log.appendChild(p);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = input.value.trim();
+    if (!message) return;
+    show(message, "you");
+    input.value = "";
+    send.disabled = true;
+    try {
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, message: message }),
+      });
+      if (response.status === 429) {
+        show("You've sent a lot of messages. Please try again later.", "bot");
+      } else if (!response.ok) {
+        show("Sorry, something went wrong. Please try again.", "bot");
+      } else {
+        show((await response.json()).reply, "bot");
+      }
+    } catch (error) {
+      show("Sorry, we couldn't reach the help center. Please try again.", "bot");
+    } finally {
+      send.disabled = false;
+      input.focus();
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "action": "created",
+  "issue": {
+    "number": 131,
+    "title": "Pagination returns duplicate rows",
+    "body": "Listing customers with page_size=100 repeats rows across pages.",
+    "user": {
+      "login": "tv-fixture-customer",
+      "id": 90000002,
+      "type": "User"
+    },
+    "state": "open"
+  },
+  "comment": {
+    "id": 2841900001,
+    "body": "Same here on version 3.4.1 with Python 3.12. Happens on the second page only.",
+    "user": {
+      "login": "tv-fixture-commenter",
+      "id": 90000003,
+      "type": "User"
+    }
+  },
+  "repository": {
+    "id": 700000001,
+    "full_name": "quillstone-software/ledger-python",
+    "private": false,
+    "owner": {
+      "login": "quillstone-software",
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "tv-fixture-commenter",
+    "id": 90000003,
+    "type": "User"
+  },
+  "installation": {
+    "id": 50000001
+  }
+}

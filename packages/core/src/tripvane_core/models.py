@@ -1,5 +1,8 @@
 """Database schema: the milestone 1 tables plus the links frozen at schema review.
 
+The tables live in core because the collector, the analyst and the API all use them;
+the Alembic migrations that create them live in packages/collector.
+
 Additions over the milestone 1 prompt (see tripvane-reviews/m1-schema-review.md):
 events.payload_id, session_sources, domains and session_domains, so later lookups
 join on indexed columns instead of reading event JSON.
@@ -144,6 +147,8 @@ class CanaryHit(Base):
     canary_id: Mapped[int | None] = mapped_column(ForeignKey("canaries.id"))
     ts: Mapped[datetime] = mapped_column(Timestamp)
     source: Mapped[dict[str, Any]] = mapped_column(Json)
+    # The canary secret found in a tool call argument; null for a canary URL hit.
+    secret: Mapped[str | None] = mapped_column(String(128))
 
 
 class Tag(Base):

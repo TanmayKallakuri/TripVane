@@ -7,10 +7,12 @@ test:
 
 replay:
 	uv run --locked --all-packages python -m tripvane_sensors.runtime.replay fixtures
+	uv run --locked --all-packages python -m tripvane_sensors.archetypes.github.replay fixtures/github
 
 deploy:
-	@echo "deploy: not implemented (SENSOR=$(SENSOR) HOST=$(HOST))"
-	@exit 1
+	@if [ -z "$(SENSOR)" ] || [ -z "$(HOST)" ]; then \
+		echo "usage: make deploy SENSOR=support HOST=1.2.3.4" >&2; exit 2; fi
+	infra/deploy.sh "$(SENSOR)" "$(HOST)"
 
 cost-report:
 	@echo "cost-report: not implemented"

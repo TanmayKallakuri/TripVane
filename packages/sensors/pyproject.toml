@@ -4,8 +4,12 @@ version = "0.0.0"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.12.1",
+    "fastapi>=0.120",
     "httpx2>=2.13.1",
+    "mcp>=2.3.0",
+    "pyjwt[crypto]>=2.15.1",
     "tripvane-core",
+    "uvicorn>=0.54.0",
 ]
 
 [build-system]
