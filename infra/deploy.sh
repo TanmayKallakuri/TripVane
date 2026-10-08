@@ -4,11 +4,15 @@
 #
 #   infra/deploy.sh SENSOR HOST        (or: make deploy SENSOR=support HOST=203.0.113.10)
 #
-# SENSOR is an archetype name (support), optionally with a suffix for further droplets of
-# the same archetype (support-2). Settings come from .env.SENSOR at the repository root,
-# which is never committed; it must set SENSOR_ID, SENSOR_HOSTNAME, COLLECTOR_URL (https,
-# default port) and COLLECTOR_TOKEN, plus whatever the archetype needs (for support:
-# ANTHROPIC_API_KEY, DAILY_TOKEN_BUDGET, CANARY_API_KEY, CANARY_DB_PASSWORD).
+# SENSOR is an archetype name (support, mcp, infra, github), optionally with a suffix for
+# further droplets of the same archetype (support-2). Settings come from .env.SENSOR at the
+# repository root, which is never committed; it must set SENSOR_ID, SENSOR_HOSTNAME,
+# COLLECTOR_URL (https, default port) and COLLECTOR_TOKEN, plus whatever the archetype
+# needs (support and mcp: ANTHROPIC_API_KEY, DAILY_TOKEN_BUDGET, CANARY_API_KEY,
+# CANARY_DB_PASSWORD; github: those plus GITHUB_WEBHOOK_SECRET, GITHUB_APP_ID and
+# GITHUB_APP_PRIVATE_KEY_B64; infra: nothing more).
+# The archetype's Caddyfile is infra/Caddyfile.ARCHETYPE when that file exists, otherwise
+# infra/Caddyfile.
 # The droplet needs Docker and compose (infra/bootstrap-droplet.sh) and ssh access as
 # DEPLOY_USER (default root).
 set -euo pipefail
@@ -36,6 +40,8 @@ ARCHETYPE=${SENSOR%%-*}
 COMPOSE_FILE="$ROOT/infra/compose.$ARCHETYPE.yml"
 ENV_FILE="$ROOT/.env.$SENSOR"
 IMAGE="tripvane-sensor:$ARCHETYPE"
+CADDYFILE="$ROOT/infra/Caddyfile.$ARCHETYPE"
+[ -f "$CADDYFILE" ] || CADDYFILE="$ROOT/infra/Caddyfile"
 
 [ -d "$ROOT/packages/sensors/src/tripvane_sensors/archetypes/$ARCHETYPE" ] || {
     echo "deploy: no archetype named $ARCHETYPE" >&2
@@ -63,6 +69,19 @@ if [[ ! "$COLLECTOR_URL" =~ ^https://([A-Za-z0-9.-]+)(/.*)?$ ]]; then
     exit 2
 fi
 COLLECTOR_HOST=${BASH_REMATCH[1]}
+# The egress proxy's allowlist: the collector, plus the Anthropic API for archetypes that
+# call a model. The infrastructure lookalikes never do; the GitHub sensor also reads pull
+# request diffs from api.github.com.
+if [ "$ARCHETYPE" = infra ]; then
+    EGRESS_HOSTS="$COLLECTOR_HOST"
+elif [ "$ARCHETYPE" = github ]; then
+    EGRESS_HOSTS="api.anthropic.com
+api.github.com
+$COLLECTOR_HOST"
+else
+    EGRESS_HOSTS="api.anthropic.com
+$COLLECTOR_HOST"
+fi
 
 echo "deploy: building $IMAGE"
 docker build --platform linux/amd64 -f "$ROOT/infra/Dockerfile.sensor" \
@@ -76,8 +95,9 @@ echo "deploy: writing configuration to $REMOTE_DIR"
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 cp "$COMPOSE_FILE" "$STAGE/compose.yml"
-cp "$ROOT/infra/Caddyfile" "$ROOT/infra/squid.conf" "$STAGE/"
-printf 'api.anthropic.com\n%s\n' "$COLLECTOR_HOST" > "$STAGE/egress-allowed-hosts.txt"
+cp "$CADDYFILE" "$STAGE/Caddyfile"
+cp "$ROOT/infra/squid.conf" "$STAGE/"
+printf '%s\n' "$EGRESS_HOSTS" > "$STAGE/egress-allowed-hosts.txt"
 (umask 077 && cp "$ENV_FILE" "$STAGE/.env")
 tar -C "$STAGE" -czf - compose.yml Caddyfile squid.conf egress-allowed-hosts.txt .env \
     | ssh -o BatchMode=yes "$TARGET" "tar -C '$REMOTE_DIR' -xzf - && chmod 600 '$REMOTE_DIR/.env'"

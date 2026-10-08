@@ -9,26 +9,31 @@ per-IP limit of RATE_LIMIT messages per hour keeps a scanner from spending the d
 token budget. GET /health reports the sensor id and archetype.
 """
 
-import ipaddress
 import secrets
 import threading
 import time
-from collections import OrderedDict, deque
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-import anthropic
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from tripvane_core.config import Settings
 from tripvane_core.events import EndReason, InputReceived, ModelTurn, SessionEnded, SessionStarted
-from tripvane_core.events import Source as EventSource
 from tripvane_core.hashing import payload_hash
+from tripvane_sensors.archetypes.common import (
+    RateLimiter,
+    anthropic_client,
+    background,
+    client_source,
+    spooled_sink,
+    trusted_proxy_address,
+)
 from tripvane_sensors.runtime.budget import Budget
 from tripvane_sensors.runtime.canary import Canaries
 from tripvane_sensors.runtime.decoy_agent import AnyEvent, DecoyAgent, ModelClient, Sink
@@ -44,8 +49,6 @@ MAX_MESSAGE_LENGTH = 4000
 # Conversations are tracked in memory. The least recently used one is forgotten beyond
 # this many; if it comes back it continues as a new session.
 MAX_CONVERSATIONS = 10_000
-DEFAULT_SPOOL_DIR = "/var/spool/tripvane"
-MODEL_TIMEOUT_SECONDS = 30.0
 
 _HERE = Path(__file__).parent
 SYSTEM_PROMPT = _HERE / "system.md"
@@ -59,8 +62,6 @@ FALLBACK_REPLIES: dict[EndReason, str] = {
     "error": "Sorry, something went wrong on our side. Please try again in a few minutes.",
 }
 
-IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
-
 
 class ChatRequest(BaseModel):
     conversation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
@@ -73,75 +74,6 @@ class ChatReply(BaseModel):
 
 def _now() -> datetime:
     return datetime.now(UTC)
-
-
-def parse_ip(value: str | None) -> IPAddress | None:
-    """The address in value, with IPv4-mapped IPv6 addresses unwrapped; None if invalid."""
-    if not value:
-        return None
-    try:
-        address = ipaddress.ip_address(value.strip())
-    except ValueError:
-        return None
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
-        return address.ipv4_mapped
-    return address
-
-
-def client_source(request: Request, trusted_proxy: IPAddress | None) -> EventSource:
-    """The source block for a request: client IP, user agent and Accept-Language.
-
-    The client IP is the peer address, unless the peer is trusted_proxy: then it is the
-    last X-Forwarded-For entry, the one our proxy appended. X-Forwarded-For from any
-    other peer is ignored, because a client can write anything into it.
-    """
-    peer = parse_ip(request.client.host if request.client else None)
-    if peer is None:
-        raise HTTPException(status_code=400, detail="unknown client address")
-    ip = peer
-    if trusted_proxy is not None and peer == trusted_proxy:
-        forwarded = ",".join(request.headers.getlist("x-forwarded-for"))
-        ip = parse_ip(forwarded.rsplit(",", 1)[-1]) or peer
-    headers = {}
-    accept_language = request.headers.get("accept-language")
-    if accept_language:
-        headers["Accept-Language"] = accept_language
-    return EventSource(ip=ip, user_agent=request.headers.get("user-agent"), headers_subset=headers)
-
-
-class RateLimiter:
-    """Sliding window: at most `limit` accepted requests per key in any `window` seconds."""
-
-    def __init__(
-        self, limit: int, window: float, clock: Callable[[], float] = time.monotonic
-    ) -> None:
-        self.limit = limit
-        self.window = window
-        self._clock = clock
-        self._hits: dict[str, deque[float]] = {}
-        self._lock = threading.Lock()
-        self._sweep_at = 1024
-
-    def allow(self, key: str) -> bool:
-        """Record a request for key and return True, or return False if key is over the limit."""
-        now = self._clock()
-        with self._lock:
-            hits = self._hits.setdefault(key, deque())
-            while hits and now - hits[0] >= self.window:
-                hits.popleft()
-            if len(hits) >= self.limit:
-                return False
-            hits.append(now)
-            if len(self._hits) > self._sweep_at:
-                self._sweep(now)
-            return True
-
-    def _sweep(self, now: float) -> None:
-        """Forget keys with no request inside the window, so memory stays bounded."""
-        self._hits = {
-            key: hits for key, hits in self._hits.items() if hits and now - hits[-1] < self.window
-        }
-        self._sweep_at = max(1024, 2 * len(self._hits))
 
 
 def _new_session_id(conversation_id: str) -> str:
@@ -215,23 +147,15 @@ def create_app(
     if settings.sensor_id is None:
         raise RuntimeError("SENSOR_ID is not set")
     sensor_id = settings.sensor_id
-    trusted_proxy = parse_ip(settings.trusted_proxy)
-    if settings.trusted_proxy is not None and trusted_proxy is None:
-        raise ValueError("TRUSTED_PROXY must be an IP address")
+    trusted_proxy = trusted_proxy_address(settings)
     budget = Budget.from_settings(settings)
 
     shipper: EventSink | None = None
     if sink is None:
-        if settings.collector_url is None or settings.collector_token is None:
-            raise RuntimeError("COLLECTOR_URL and COLLECTOR_TOKEN must be set")
-        shipper = EventSink.from_settings(settings, Path(settings.spool_dir or DEFAULT_SPOOL_DIR))
+        shipper = spooled_sink(settings)
         sink = shipper
     if client is None:
-        if settings.anthropic_api_key is None:
-            raise RuntimeError("ANTHROPIC_API_KEY is not set")
-        client = anthropic.Anthropic(
-            api_key=settings.anthropic_api_key, timeout=MODEL_TIMEOUT_SECONDS
-        )
+        client = anthropic_client(settings)
 
     agent = DecoyAgent(
         SYSTEM_PROMPT, STANDARD_TOOLS, client, sink, budget, canaries=canaries, now=now
@@ -244,14 +168,8 @@ def create_app(
         if shipper is None:
             yield
             return
-        stop = threading.Event()
-        thread = threading.Thread(target=shipper.ship_forever, args=(stop,), daemon=True)
-        thread.start()
-        try:
+        with background(shipper.ship_forever):
             yield
-        finally:
-            stop.set()
-            thread.join(timeout=30)
 
     # No generated API docs: the page should look like a help desk, not a FastAPI app.
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)

@@ -3,9 +3,9 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import Connection
 
-from tripvane_collector.db import make_engine
-from tripvane_collector.models import Base
 from tripvane_core.config import Settings
+from tripvane_core.db import make_engine
+from tripvane_core.models import Base
 
 config = context.config
 if config.config_file_name is not None and config.attributes.get("configure_logger", True):

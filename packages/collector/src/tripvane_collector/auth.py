@@ -2,7 +2,7 @@ import hashlib
 
 from sqlalchemy import Connection, select
 
-from tripvane_collector.models import Sensor
+from tripvane_core.models import Sensor
 
 
 def hash_token(token: str) -> str:
