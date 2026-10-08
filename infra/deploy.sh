@@ -4,12 +4,13 @@
 #
 #   infra/deploy.sh SENSOR HOST        (or: make deploy SENSOR=support HOST=203.0.113.10)
 #
-# SENSOR is an archetype name (support, mcp, infra), optionally with a suffix for further
-# droplets of the same archetype (support-2). Settings come from .env.SENSOR at the
+# SENSOR is an archetype name (support, mcp, infra, github), optionally with a suffix for
+# further droplets of the same archetype (support-2). Settings come from .env.SENSOR at the
 # repository root, which is never committed; it must set SENSOR_ID, SENSOR_HOSTNAME,
 # COLLECTOR_URL (https, default port) and COLLECTOR_TOKEN, plus whatever the archetype
 # needs (support and mcp: ANTHROPIC_API_KEY, DAILY_TOKEN_BUDGET, CANARY_API_KEY,
-# CANARY_DB_PASSWORD; infra: nothing more).
+# CANARY_DB_PASSWORD; github: those plus GITHUB_WEBHOOK_SECRET, GITHUB_APP_ID and
+# GITHUB_APP_PRIVATE_KEY_B64; infra: nothing more).
 # The archetype's Caddyfile is infra/Caddyfile.ARCHETYPE when that file exists, otherwise
 # infra/Caddyfile.
 # The droplet needs Docker and compose (infra/bootstrap-droplet.sh) and ssh access as
@@ -69,9 +70,14 @@ if [[ ! "$COLLECTOR_URL" =~ ^https://([A-Za-z0-9.-]+)(/.*)?$ ]]; then
 fi
 COLLECTOR_HOST=${BASH_REMATCH[1]}
 # The egress proxy's allowlist: the collector, plus the Anthropic API for archetypes that
-# call a model. The infrastructure lookalikes never do.
+# call a model. The infrastructure lookalikes never do; the GitHub sensor also reads pull
+# request diffs from api.github.com.
 if [ "$ARCHETYPE" = infra ]; then
     EGRESS_HOSTS="$COLLECTOR_HOST"
+elif [ "$ARCHETYPE" = github ]; then
+    EGRESS_HOSTS="api.anthropic.com
+api.github.com
+$COLLECTOR_HOST"
 else
     EGRESS_HOSTS="api.anthropic.com
 $COLLECTOR_HOST"

@@ -22,6 +22,15 @@ class Settings:
     # Address of the reverse proxy in front of a sensor; only its X-Forwarded-For is honored.
     trusted_proxy: str | None = None
     spool_dir: str | None = None
+    # Keyed hash for the checksum suffix of canary secrets (canary_formats.py).
+    canary_hmac_key: str | None = field(default=None, repr=False)
+    # Public base URL that minted canary URLs start with, for example https://cdn.example.
+    canary_base_url: str | None = None
+    # GitHub triage sensor: the webhook secret and the read-only GitHub App's credentials.
+    github_webhook_secret: str | None = field(default=None, repr=False)
+    github_app_id: str | None = None
+    # The App's private key as one line: the PEM file base64-encoded.
+    github_app_private_key_b64: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] = os.environ) -> Self:
@@ -38,4 +47,9 @@ class Settings:
             daily_token_budget=budget,
             trusted_proxy=environ.get("TRUSTED_PROXY") or None,
             spool_dir=environ.get("SPOOL_DIR") or None,
+            canary_hmac_key=environ.get("CANARY_HMAC_KEY") or None,
+            canary_base_url=environ.get("CANARY_BASE_URL") or None,
+            github_webhook_secret=environ.get("GITHUB_WEBHOOK_SECRET") or None,
+            github_app_id=environ.get("GITHUB_APP_ID") or None,
+            github_app_private_key_b64=environ.get("GITHUB_APP_PRIVATE_KEY_B64") or None,
         )
