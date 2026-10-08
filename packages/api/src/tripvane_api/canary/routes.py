@@ -17,14 +17,17 @@ from tripvane_core.models import Canary, CanaryHit
 
 
 def canary_router(
-    engine: Engine, trusted_proxy: IPAddress | None, now: Callable[[], datetime]
+    engine: Engine,
+    trusted_proxy: IPAddress | None,
+    client_ip_header: str | None,
+    now: Callable[[], datetime],
 ) -> APIRouter:
     router = APIRouter()
 
     # Not in the OpenAPI schema: the endpoint should not announce what it is.
     @router.get("/c/{token}", include_in_schema=False)
     def canary_url(token: str, request: Request) -> Response:
-        source = request_source(request, trusted_proxy)
+        source = request_source(request, trusted_proxy, client_ip_header)
         with engine.begin() as conn:
             canary_id = conn.scalar(select(Canary.id).where(Canary.token == token))
             if canary_id is not None and source is not None:
@@ -38,13 +41,16 @@ def canary_router(
     return router
 
 
-def request_source(request: Request, trusted_proxy: IPAddress | None) -> Source | None:
+def request_source(
+    request: Request, trusted_proxy: IPAddress | None, client_ip_header: str | None
+) -> Source | None:
     """The source block for a request, or None when the client address is unknown.
 
-    The client IP comes from client_ip (X-Forwarded-For only from trusted_proxy). Referer
+    The client IP comes from client_ip (CLIENT_IP_HEADER when set, otherwise
+    X-Forwarded-For only from trusted_proxy). Referer
     is kept because for a canary URL it says where the planted document was opened.
     """
-    ip = client_ip(request, trusted_proxy)
+    ip = client_ip(request, trusted_proxy, client_ip_header)
     if ip is None:
         return None
     headers = {

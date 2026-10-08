@@ -141,6 +141,23 @@ def test_forwarded_address_is_used_only_behind_the_trusted_proxy(engine: Engine)
     assert [hit.source["ip"] for hit in hits(engine)] == ["203.0.113.9", "198.51.100.23"]
 
 
+def test_client_ip_header_gives_the_address_behind_a_platform_proxy(engine: Engine) -> None:
+    token = mint(engine)
+    app = create_app(engine, Settings(client_ip_header="X-Real-IP"), now=lambda: NOW)
+    platform = TestClient(app, client=("10.1.2.3", 40000))
+    platform.get(
+        f"/c/{token}", headers={"X-Real-IP": "203.0.113.9", "X-Forwarded-For": "192.0.2.1"}
+    )
+    # Without the header the peer address is all there is.
+    platform.get(f"/c/{token}")
+    assert [hit.source["ip"] for hit in hits(engine)] == ["203.0.113.9", "10.1.2.3"]
+
+
+def test_trusted_proxy_and_client_ip_header_together_are_refused(engine: Engine) -> None:
+    with pytest.raises(ValueError, match="not both"):
+        create_app(engine, Settings(trusted_proxy=PROXY, client_ip_header="X-Real-IP"))
+
+
 def test_canary_endpoint_is_not_in_the_schema(client: TestClient) -> None:
     assert "/c/{token}" not in client.get("/openapi.json").json()["paths"]
 

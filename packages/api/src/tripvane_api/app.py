@@ -38,6 +38,9 @@ def create_app(
     trusted_proxy = parse_ip(settings.trusted_proxy)
     if settings.trusted_proxy is not None and trusted_proxy is None:
         raise ValueError("TRUSTED_PROXY must be an IP address")
+    client_ip_header = settings.client_ip_header
+    if trusted_proxy is not None and client_ip_header is not None:
+        raise ValueError("set TRUSTED_PROXY or CLIENT_IP_HEADER, not both")
 
     app = FastAPI(
         title="Tripvane lookup API",
@@ -57,6 +60,8 @@ def create_app(
     )
     # On app.state so tests can reach the counts without making thousands of requests.
     app.state.limiter = DailyLimiter(now)
-    app.include_router(lookup_router(engine, app.state.limiter, trusted_proxy, now))
-    app.include_router(canary_router(engine, trusted_proxy, now))
+    app.include_router(
+        lookup_router(engine, app.state.limiter, trusted_proxy, client_ip_header, now)
+    )
+    app.include_router(canary_router(engine, trusted_proxy, client_ip_header, now))
     return app
