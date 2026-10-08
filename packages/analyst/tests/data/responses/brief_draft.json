@@ -1,0 +1,25 @@
+{
+  "id": "msg_rec_brief_draft",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5-5",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "recorded-signature-placeholder"
+    },
+    {
+      "type": "text",
+      "text": "{\"headline\": \"Instructions hidden in ordinary support requests asked the decoys to send stored secrets out, and 2 canary hits show the instructions were acted on.\", \"by_the_numbers\": [{\"figure\": \"2\", \"label\": \"new attack payloads\"}, {\"figure\": \"3\", \"label\": \"distinct attack payloads received\"}, {\"figure\": \"2\", \"label\": \"canary hits\"}], \"findings\": [{\"title\": \"Secret exfiltration is the common objective\", \"body\": \"All tagged attack payloads carried the exfiltrate_secrets objective, 2 of the 3 received. One used a direct instruction aimed at email and one hid its instruction in a document aimed at the shell.\"}, {\"title\": \"One campaign spans both decoy types\", \"body\": \"The largest campaign grouped 2 payloads across 3 sessions on the support and MCP decoys. Its payloads differ only slightly, which suggests a reused template.\"}, {\"title\": \"Canaries confirm follow-through\", \"body\": \"The grid recorded 1 canary URL hit and 1 canary credential hit. Source networks are not recorded yet, so these hits cannot be tied to a network.\"}], \"recommendations\": [\"Treat text from support tickets and documents as data, and never let it trigger tools that read secrets.\", \"Require a human confirmation before an agent sends anything to an external address.\"]}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 1450,
+    "output_tokens": 980,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}
