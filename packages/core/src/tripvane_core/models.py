@@ -6,6 +6,9 @@ the Alembic migrations that create them live in packages/collector.
 Additions over the milestone 1 prompt (see tripvane-reviews/m1-schema-review.md):
 events.payload_id, session_sources, domains and session_domains, so later lookups
 join on indexed columns instead of reading event JSON.
+
+Milestone 6 (migration 0003) adds the analyst's columns on payloads, tag_proposals and
+analyst_batches.
 """
 
 from datetime import datetime
@@ -14,6 +17,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -126,6 +130,13 @@ class Payload(Base):
     first_seen: Mapped[datetime] = mapped_column(Timestamp)
     last_seen: Mapped[datetime] = mapped_column(Timestamp)
     seen_count: Mapped[int] = mapped_column(Integer)
+    # The analyst gate's verdict; null until the payload has been gated.
+    is_attack: Mapped[bool | None] = mapped_column(Boolean)
+    # The taxonomy_version the verdict was given under; a different current version
+    # makes the payload stale and due for Batch reprocessing.
+    gate_version: Mapped[str | None] = mapped_column(String(64))
+    # The smallest payload id in the payload's campaign; null for non-attacks.
+    campaign_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
 
 
 class Canary(Base):
@@ -167,3 +178,33 @@ class PayloadTag(Base):
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
     taxonomy_version: Mapped[str] = mapped_column(String(64), primary_key=True)
     confidence: Mapped[float] = mapped_column(Float)
+
+
+class TagProposal(Base):
+    """A new technique tag proposed for a payload tagged technique/other.
+
+    Proposals are reviewed by a human, who edits taxonomy/tags.yaml; nothing writes there.
+    """
+
+    __tablename__ = "tag_proposals"
+    __table_args__ = (UniqueConstraint("payload_id", "taxonomy_version"),)
+
+    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    payload_id: Mapped[int] = mapped_column(ForeignKey("payloads.id"))
+    taxonomy_version: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
+
+
+class AnalystBatch(Base):
+    """A Message Batch submitted for reprocessing; collected_at is null until written back."""
+
+    __tablename__ = "analyst_batches"
+
+    # The Anthropic message batch id.
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    taxonomy_version: Mapped[str] = mapped_column(String(64))
+    request_count: Mapped[int] = mapped_column(Integer)
+    submitted_at: Mapped[datetime] = mapped_column(Timestamp)
+    collected_at: Mapped[datetime | None] = mapped_column(Timestamp)
