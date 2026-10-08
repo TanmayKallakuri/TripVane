@@ -1,0 +1,18 @@
+# Public entry point for an infrastructure lookalike droplet: TLS for SENSOR_HOSTNAME,
+# and plain HTTP on the default ports of the products the sensor imitates. Everything,
+# /health included (it is LiteLLM's), is proxied to the sensor container. Caddy replaces
+# any X-Forwarded-For sent by the client with the client address, and the sensor trusts
+# that header only from Caddy (TRUSTED_PROXY).
+{
+	admin off
+}
+
+{$SENSOR_HOSTNAME} {
+	header -Server
+	reverse_proxy sensor:8080
+}
+
+http://:11434, http://:3000, http://:4000, http://:7860, http://:8080 {
+	header -Server
+	reverse_proxy sensor:8080
+}

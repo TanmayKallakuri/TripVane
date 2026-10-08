@@ -1,0 +1,103 @@
+# MCP server sensor behind Caddy, deployed by infra/deploy.sh into
+# /opt/tripvane/<SENSOR>/ on the droplet next to Caddyfile, squid.conf,
+# egress-allowed-hosts.txt and .env (the sensor's settings, written from .env.<SENSOR>).
+#
+# How the egress rule is enforced: the sensor may only reach api.anthropic.com and the
+# collector host.
+#   1. The sensor container is attached only to the `sensor` network, which is declared
+#      `internal: true`. Docker gives an internal network no gateway and no NAT, so a
+#      process in the sensor container cannot open a connection to any address outside
+#      that network, whatever it does with proxy settings.
+#   2. The only container on that network with a way out is `egress`, a Squid forward
+#      proxy that is also on the `edge` network. The sensor's HTTPS_PROXY points at it
+#      (the Anthropic SDK and the event sink both honor it). squid.conf allows only
+#      CONNECT tunnels to port 443 of the names in egress-allowed-hosts.txt, which
+#      deploy.sh writes as api.anthropic.com plus the host of COLLECTOR_URL, and denies
+#      every other request, including tunnels to raw IP addresses.
+#   3. The sensor's upstream DNS server is set to 127.0.0.1, where nothing listens, so it
+#      cannot resolve outside names (no DNS tunnelling). Docker's embedded DNS still
+#      answers for the service names on its own network, such as `egress`.
+#   4. Caddy is on both networks only to forward inbound HTTPS to the sensor. It is a
+#      reverse proxy for one upstream, not a router, so it gives the sensor no way out.
+# The sensor also runs read-only, as a non-root user, with every capability dropped.
+
+name: tripvane-mcp
+
+services:
+  sensor:
+    image: tripvane-sensor:mcp
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HTTPS_PROXY: http://egress:3128
+      TRUSTED_PROXY: 172.30.0.2
+      SPOOL_DIR: /var/spool/tripvane
+    networks:
+      sensor:
+        ipv4_address: 172.30.0.10
+    dns: 127.0.0.1
+    volumes:
+      - spool:/var/spool/tripvane
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - egress
+
+  egress:
+    image: ubuntu/squid:6.6-24.04_edge
+    restart: unless-stopped
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+      - ./egress-allowed-hosts.txt:/etc/squid/allowed-hosts.txt:ro
+    networks:
+      sensor:
+        ipv4_address: 172.30.0.3
+      edge: {}
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SENSOR_HOSTNAME: ${SENSOR_HOSTNAME:?SENSOR_HOSTNAME must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      sensor:
+        ipv4_address: 172.30.0.2
+      edge: {}
+    depends_on:
+      - sensor
+
+networks:
+  sensor:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  edge: {}
+
+volumes:
+  spool: {}
+  caddy_data: {}
+  caddy_config: {}

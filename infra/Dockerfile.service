@@ -1,0 +1,36 @@
+# One image for the two non-sensor services: the public lookup API and the collector.
+# Build from the repository root:
+#   docker build -f infra/Dockerfile.service --build-arg SERVICE=api -t tripvane-service:api .
+# SERVICE is api or collector; the image runs tripvane_<SERVICE>.app:create_app.
+
+FROM python:3.12-slim-bookworm AS build
+ARG SERVICE
+RUN pip install --no-cache-dir uv==0.11.33
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+WORKDIR /src
+COPY pyproject.toml uv.lock .python-version ./
+COPY packages ./packages
+RUN test "$SERVICE" = api || test "$SERVICE" = collector
+RUN uv sync --locked --no-dev --no-editable --package "tripvane-$SERVICE"
+# The collector image also runs the migrations; point Alembic at the installed package.
+RUN sed 's|^script_location = .*|script_location = tripvane_collector:migrations|' \
+    packages/collector/alembic.ini > /app/alembic.ini
+
+FROM python:3.12-slim-bookworm
+ARG SERVICE
+ENV SERVICE=${SERVICE} \
+    PATH=/app/.venv/bin:$PATH \
+    PYTHONUNBUFFERED=1
+COPY --from=build /app /app
+RUN python -c "import importlib, sys; importlib.import_module(f'tripvane_{sys.argv[1]}.app')" "$SERVICE" \
+    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin service
+USER service
+WORKDIR /app
+EXPOSE 8080
+# X-Forwarded-For is handled by the API (TRUSTED_PROXY), so uvicorn must not rewrite the
+# client address. No access log: it would keep the address of everyone who looks
+# something up. One worker: the API's daily limits are counted in memory.
+CMD ["sh", "-c", "exec uvicorn \"tripvane_${SERVICE}.app:create_app\" --factory --host 0.0.0.0 --port 8080 --workers 1 --no-proxy-headers --no-access-log --no-server-header"]

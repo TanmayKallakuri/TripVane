@@ -1,0 +1,12 @@
+# Build context for infra/Dockerfile.sensor and infra/Dockerfile.service: only the
+# workspace sources are needed.
+.git
+.github
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+.env
+.env.*
+fixtures
+web

@@ -1,0 +1,38 @@
+{
+  "action": "opened",
+  "number": 132,
+  "pull_request": {
+    "number": 132,
+    "title": "Fix typo in README",
+    "body": "Small documentation fix in the quick start section.",
+    "user": {
+      "login": "tv-fixture-contributor",
+      "id": 90000004,
+      "type": "User"
+    },
+    "state": "open",
+    "head": {
+      "ref": "fix-readme-typo"
+    },
+    "base": {
+      "ref": "main"
+    }
+  },
+  "repository": {
+    "id": 700000001,
+    "full_name": "quillstone-software/ledger-python",
+    "private": false,
+    "owner": {
+      "login": "quillstone-software",
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "tv-fixture-contributor",
+    "id": 90000004,
+    "type": "User"
+  },
+  "installation": {
+    "id": 50000001
+  }
+}

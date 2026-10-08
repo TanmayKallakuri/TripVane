@@ -1,0 +1,27 @@
+# Tripvane tag taxonomy. Three axes; the tagger assigns exactly one tag per axis.
+# taxonomy_version is the sha256 of this file's bytes, so any edit (comments included)
+# makes every gated payload stale and due for Batch reprocessing.
+# Proposals for new tags land in the tag_proposals table; a human edits this file.
+version: 1
+axes:
+  technique:
+    direct_instruction: The payload openly tells the agent to take an action, in the message it sends to the agent.
+    role_override: The payload tries to replace the agent's instructions or identity, for example by posing as the system, the developer or a new operating mode.
+    hidden_in_document: The instruction is embedded in content the agent processes on someone's behalf, such as a document, web page, issue, email or code diff, rather than addressed to the agent directly.
+    tool_argument_injection: The instruction reaches the agent through a tool, carried in a tool call's arguments, a tool description or a tool result.
+    encoded: The instruction is obfuscated, for example as base64, hex, invisible or look-alike characters, or a cipher, so that a text filter would miss it.
+    other: The payload uses a technique that none of the other technique tags describes.
+  objective:
+    exfiltrate_secrets: The payload aims to make the agent reveal or send out credentials, keys, tokens, its system prompt or other confidential data.
+    send_message: The payload aims to make the agent send an email, chat message, comment or other message that its operator did not ask for.
+    destructive_action: The payload aims to make the agent delete, overwrite, corrupt or disable data or systems.
+    persistence: The payload aims to leave something behind that keeps influencing the agent or keeps access open later, such as a stored instruction, a new key or a scheduled job.
+    recon: The payload aims to make the agent disclose its tools, permissions, configuration, environment or connected systems.
+    none: The payload has no identifiable objective beyond changing the agent's behaviour.
+  target_tool:
+    email: The payload targets a tool that sends or reads email or other messages.
+    filesystem: The payload targets a tool that reads, writes, lists or deletes files.
+    shell: The payload targets a tool that runs commands or code.
+    http: The payload targets a tool that makes web requests or fetches URLs.
+    secrets: The payload targets a tool or store that holds credentials, keys or configuration secrets.
+    none: The payload does not target a specific tool.
