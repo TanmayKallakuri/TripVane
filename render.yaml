@@ -1,0 +1,70 @@
+# Render Blueprint for the week-one decoys on Render's free plan (docs/no-card-launch.md).
+# Two sensors from infra/Dockerfile.sensor; ARCHETYPE reaches the build as a build arg.
+#
+# There is no internal network or Squid proxy here, so EGRESS_ALLOWED_HOSTS turns on the
+# in-process egress guard (packages/sensors/src/tripvane_sensors/runtime/egress.py): the
+# sensor may look up and connect to these hosts only, on port 443. It must name
+# api.anthropic.com and the host of COLLECTOR_URL.
+#
+# Values marked sync: false are secrets or per-deployment values typed into Render's
+# dashboard when the Blueprint is first applied. CLIENT_IP_HEADER is added after the
+# first deploy, once a test request shows which header Render overwrites (docs step 6).
+
+services:
+  - type: web
+    name: quillstone-support
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./infra/Dockerfile.sensor
+    dockerContext: .
+    envVars:
+      - key: ARCHETYPE
+        value: support
+      - key: PORT
+        value: "8080"
+      - key: SENSOR_ID
+        value: support-1
+      - key: DAILY_TOKEN_BUDGET
+        value: "200000"
+      - key: COLLECTOR_URL
+        value: https://tripvane-collector.vercel.app
+      - key: EGRESS_ALLOWED_HOSTS
+        value: api.anthropic.com,tripvane-collector.vercel.app
+      - key: COLLECTOR_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CANARY_API_KEY
+        sync: false
+      - key: CANARY_DB_PASSWORD
+        sync: false
+
+  - type: web
+    name: quillstone-mcp
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./infra/Dockerfile.sensor
+    dockerContext: .
+    envVars:
+      - key: ARCHETYPE
+        value: mcp
+      - key: PORT
+        value: "8080"
+      - key: SENSOR_ID
+        value: mcp-1
+      - key: DAILY_TOKEN_BUDGET
+        value: "100000"
+      - key: COLLECTOR_URL
+        value: https://tripvane-collector.vercel.app
+      - key: EGRESS_ALLOWED_HOSTS
+        value: api.anthropic.com,tripvane-collector.vercel.app
+      - key: COLLECTOR_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CANARY_API_KEY
+        sync: false
+      - key: CANARY_DB_PASSWORD
+        sync: false

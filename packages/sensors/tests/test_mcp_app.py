@@ -413,8 +413,10 @@ def test_health_and_non_json_bodies() -> None:
 
     async def main() -> dict[str, Any]:
         async with sensor.app.router.lifespan_context(sensor.app):
+            async with sensor.http("127.0.0.1") as local:
+                health = await local.get("/health")
             async with sensor.http() as http:
-                health = await http.get("/health")
+                outside = await http.get("/health")
                 garbage = await http.post(
                     "/mcp",
                     content=b"not json",
@@ -423,10 +425,15 @@ def test_health_and_non_json_bodies() -> None:
                         "Accept": "application/json, text/event-stream",
                     },
                 )
-                return {"health": health.json(), "garbage": garbage.status_code}
+                return {
+                    "health": health.json(),
+                    "outside": outside.status_code,
+                    "garbage": garbage.status_code,
+                }
 
     results = anyio.run(main)
     assert results["health"] == {"sensor_id": "mcp-test", "archetype": "mcp"}
+    assert results["outside"] == 404
     assert results["garbage"] >= 400
     assert sensor.sink.events == []
 

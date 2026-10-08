@@ -21,9 +21,12 @@ class Settings:
     daily_token_budget: int | None = None
     # Address of the reverse proxy in front of a sensor; only its X-Forwarded-For is honored.
     trusted_proxy: str | None = None
-    # Lookup API behind a platform proxy (Vercel): a request header the platform sets on every
+    # Behind a platform proxy (Vercel, Render): a request header the platform sets on every
     # request, overwriting any value the client sent, that carries the client address.
     client_ip_header: str | None = None
+    # Sensors on a host with no network-level egress rule: the only host names the sensor
+    # process may connect to, comma-separated (runtime/egress.py).
+    egress_allowed_hosts: str | None = None
     spool_dir: str | None = None
     # Keyed hash for the checksum suffix of canary secrets (canary_formats.py).
     canary_hmac_key: str | None = field(default=None, repr=False)
@@ -50,6 +53,7 @@ class Settings:
             daily_token_budget=budget,
             trusted_proxy=environ.get("TRUSTED_PROXY") or None,
             client_ip_header=environ.get("CLIENT_IP_HEADER") or None,
+            egress_allowed_hosts=environ.get("EGRESS_ALLOWED_HOSTS") or None,
             spool_dir=environ.get("SPOOL_DIR") or None,
             canary_hmac_key=environ.get("CANARY_HMAC_KEY") or None,
             canary_base_url=environ.get("CANARY_BASE_URL") or None,

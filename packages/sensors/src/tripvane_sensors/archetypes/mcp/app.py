@@ -22,7 +22,7 @@ the client deletes it or after IDLE_TIMEOUT_SECONDS without a request. Requests 
 a session the sensor issued (the 2026-07-28 protocol has no sessions; also unknown or
 expired ids) are grouped per client address under the same inactivity rule.
 
-GET /health reports the sensor id and archetype.
+GET /health reports the sensor id and archetype, to the container's own healthcheck only.
 """
 
 import json
@@ -60,6 +60,8 @@ from tripvane_sensors.archetypes.common import (
     anthropic_client,
     background,
     client_source,
+    from_this_host,
+    guard_egress,
     spooled_sink,
     trusted_proxy_address,
     utc_now,
@@ -273,6 +275,7 @@ class Recorder:
         tools: dict[str, DecoyTool],
         limiter: RateLimiter,
         trusted_proxy: IPAddress | None,
+        client_ip_header: str | None,
     ) -> None:
         self.manager = manager
         self.tracker = tracker
@@ -280,10 +283,11 @@ class Recorder:
         self.tools = tools
         self.limiter = limiter
         self.trusted_proxy = trusted_proxy
+        self.client_ip_header = client_ip_header
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         request = Request(scope, receive)
-        source = client_source(request, self.trusted_proxy)
+        source = client_source(request, self.trusted_proxy, self.client_ip_header)
         messages: list[dict[str, Any]] = []
         if request.method == "POST":
             body = await _read_body(receive, DEFAULT_MAX_REQUEST_BODY_SIZE)
@@ -420,6 +424,7 @@ def create_app(
     if settings.sensor_id is None:
         raise RuntimeError("SENSOR_ID is not set")
     sensor_id = settings.sensor_id
+    guard_egress(settings)
     trusted_proxy = trusted_proxy_address(settings)
     budget = Budget.from_settings(settings)
     if canaries is None:
@@ -448,6 +453,7 @@ def create_app(
         tools,
         RateLimiter(RATE_LIMIT, RATE_WINDOW_SECONDS, **clock_args),
         trusted_proxy,
+        settings.client_ip_header,
     )
     shippers = [] if shipper is None else [shipper.ship_forever]
 
@@ -458,7 +464,9 @@ def create_app(
             with background(*shippers), background(tracker.reap_forever):
                 yield
 
-    async def health(request: Request) -> JSONResponse:
+    async def health(request: Request) -> Response:
+        if not from_this_host(request):
+            return Response(status_code=404)
         return JSONResponse({"sensor_id": sensor_id, "archetype": ARCHETYPE})
 
     app = Starlette(routes=[Route("/health", health), Route("/mcp", recorder)], lifespan=lifespan)

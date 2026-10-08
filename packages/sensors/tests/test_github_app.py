@@ -395,9 +395,11 @@ def test_rate_limit_per_author_records_without_calling_the_model() -> None:
     assert len(sensor.model.messages.requests) == RATE_LIMIT + 1
 
 
-def test_health() -> None:
+def test_health_answers_only_the_containers_own_healthcheck() -> None:
+    local = Sensor(peer="127.0.0.1")
+    assert local.http.get("/health").json() == {"sensor_id": "github-test", "archetype": "github"}
     sensor = Sensor()
-    assert sensor.http.get("/health").json() == {"sensor_id": "github-test", "archetype": "github"}
+    assert sensor.http.get("/health").status_code == 404
     assert sensor.http.get("/docs").status_code == 404
 
 

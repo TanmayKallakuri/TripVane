@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Header, Request, Response
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 
 from tripvane_core.config import Settings
 from tripvane_core.events import InputReceived, SessionEnded, SessionStarted
@@ -41,6 +41,8 @@ from tripvane_sensors.archetypes.common import (
     anthropic_client,
     background,
     client_source,
+    from_this_host,
+    guard_egress,
     spooled_sink,
     trusted_proxy_address,
 )
@@ -147,7 +149,9 @@ def create_app(
         raise RuntimeError("GITHUB_WEBHOOK_SECRET is not set")
     sensor_id = settings.sensor_id
     webhook_secret = settings.github_webhook_secret
+    guard_egress(settings)
     trusted_proxy = trusted_proxy_address(settings)
+    client_ip_header = settings.client_ip_header
     budget = Budget.from_settings(settings)
 
     shipper: EventSink | None = None
@@ -216,8 +220,11 @@ def create_app(
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
+    # Only for the container's own healthcheck: it names the sensor and its archetype.
     @app.get("/health")
-    def health() -> dict[str, str]:
+    def health(request: Request) -> dict[str, str]:
+        if not from_this_host(request):
+            raise HTTPException(status_code=404)
         return {"sensor_id": sensor_id, "archetype": ARCHETYPE}
 
     @app.post("/webhook")
@@ -242,7 +249,7 @@ def create_app(
             return Response(status_code=400)
         if delivery is None:
             return Response(status_code=204)
-        source = client_source(request, trusted_proxy).model_copy(
+        source = client_source(request, trusted_proxy, client_ip_header).model_copy(
             update={"account_handle": delivery.author}
         )
         delivery_id = x_github_delivery or ""
