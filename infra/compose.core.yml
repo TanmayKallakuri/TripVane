@@ -1,0 +1,91 @@
+# The lookup API and the collector behind Caddy, deployed by infra/deploy-core.sh into
+# /opt/tripvane/core/ on the droplet next to Caddyfile and .env (written from .env.core).
+# The database is Supabase, outside the droplet. Neither service is a decoy, so there is
+# no egress proxy here; both need to reach the database.
+
+name: tripvane-core
+
+services:
+  api:
+    image: tripvane-service:api
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TRUSTED_PROXY: 172.31.0.2
+    networks:
+      core:
+        ipv4_address: 172.31.0.10
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/openapi.json', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  collector:
+    image: tripvane-service:collector
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      core:
+        ipv4_address: 172.31.0.11
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_HOSTNAME: ${API_HOSTNAME:?API_HOSTNAME must be set in .env}
+      CANARY_HOSTNAME: ${CANARY_HOSTNAME:?CANARY_HOSTNAME must be set in .env}
+      COLLECTOR_HOSTNAME: ${COLLECTOR_HOSTNAME:?COLLECTOR_HOSTNAME must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      core:
+        ipv4_address: 172.31.0.2
+    depends_on:
+      - api
+      - collector
+
+networks:
+  core:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

@@ -2,7 +2,15 @@
 name = "tripvane-plugin"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = []
+# Kept free of other tripvane packages: Claude Code installs the plugin directory on its
+# own, outside this workspace.
+dependencies = [
+    "httpx2>=2.13.1",
+    "mcp>=2.3.0",
+]
+
+[project.scripts]
+tripvane-plugin = "tripvane_plugin.server:main"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

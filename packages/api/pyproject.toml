@@ -7,7 +7,11 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "sqlalchemy>=2.0.40",
     "tripvane-core",
+    "uvicorn>=0.54.0",
 ]
+
+[project.scripts]
+tripvane-api = "tripvane_api.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

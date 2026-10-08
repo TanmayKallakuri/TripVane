@@ -1,15 +1,20 @@
-"""Public API. Run with: uvicorn tripvane_api.app:create_app --factory
+"""Public API: the lookup API and feed (milestone 7) and the canary URL endpoint.
 
-Milestone 5 serves the canary URL endpoint; the lookup API joins it in milestone 7.
+Run with: uvicorn tripvane_api.app:create_app --factory, as one worker, because the
+daily request limits are counted in memory (limits.py).
 """
 
 from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Engine
 
-from tripvane_api.canary.routes import canary_router, parse_ip
+from tripvane_api.canary.routes import canary_router
+from tripvane_api.client import parse_ip
+from tripvane_api.limits import DailyLimiter
+from tripvane_api.lookup.routes import lookup_router
 from tripvane_core.config import Settings
 from tripvane_core.db import make_engine
 
@@ -34,6 +39,24 @@ def create_app(
     if settings.trusted_proxy is not None and trusted_proxy is None:
         raise ValueError("TRUSTED_PROXY must be an IP address")
 
-    app = FastAPI(title="tripvane api")
+    app = FastAPI(
+        title="Tripvane lookup API",
+        description=(
+            "What the Tripvane deception grid has seen of an IP address, a domain or a "
+            "payload. seen false means only that the grid has not seen the value."
+        ),
+        version="1",
+    )
+    # web/lookup.html calls the API from any origin, including a file opened from disk.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET"],
+        allow_headers=["X-Api-Key"],
+        expose_headers=["Retry-After"],
+    )
+    # On app.state so tests can reach the counts without making thousands of requests.
+    app.state.limiter = DailyLimiter(now)
+    app.include_router(lookup_router(engine, app.state.limiter, trusted_proxy, now))
     app.include_router(canary_router(engine, trusted_proxy, now))
     return app
