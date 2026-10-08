@@ -2,8 +2,17 @@
 name = "tripvane-collector"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "alembic>=1.16",
+    "fastapi>=0.120",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0.40",
+    "tripvane-core",
+]
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+tripvane-core = { workspace = true }
