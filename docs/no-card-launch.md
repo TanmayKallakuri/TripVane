@@ -61,7 +61,7 @@ path is for the first week. Research and sources:
 |---|---|
 | Vercel, Hobby plan | Sign up with GitHub and choose Hobby, not the Pro trial. Install the Vercel GitHub app on `TanmayKallakuri/TripVane` only. |
 | Render, Hobby workspace | Sign up with GitHub and install the Render GitHub app on the repository. If Render asks for a card, stop: Back4app Containers is the card-free fallback for one sensor. |
-| Supabase, Anthropic | As in `docs/go-live.md` 2.1 and 2.2. The key must be created inside a Console workspace. |
+| Supabase, Anthropic | As in `docs/go-live.md` 2.1 and 2.2. A key that is not scoped to a workspace also needs `ANTHROPIC_CUSTOM_HEADERS=anthropic-workspace-id: <workspace id>` on each sensor (3.4); the Anthropic SDK reads that variable itself. |
 
 ## 3. Sequence
 
@@ -138,7 +138,8 @@ decision 8, do not announce the API or the page until a privacy notice is writte
 
 In Render, choose New, then Blueprint, select the repository, and apply `render.yaml`.
 When prompted, enter each service's `COLLECTOR_TOKEN`, `CANARY_API_KEY` and
-`CANARY_DB_PASSWORD` from 3.1, and the Anthropic key as `ANTHROPIC_API_KEY`. Both services
+`CANARY_DB_PASSWORD` from 3.1, the Anthropic key as `ANTHROPIC_API_KEY`, and
+`ANTHROPIC_CUSTOM_HEADERS` if the key needs it (section 2). Both services
 build `infra/Dockerfile.sensor`; the first build takes several minutes.
 
 ### 3.5 Checks

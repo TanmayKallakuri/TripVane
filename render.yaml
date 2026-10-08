@@ -35,6 +35,10 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # "anthropic-workspace-id: <id>" when the key is not scoped to a workspace; the
+      # Anthropic SDK reads it itself. Leave empty for a workspace key.
+      - key: ANTHROPIC_CUSTOM_HEADERS
+        sync: false
       - key: CANARY_API_KEY
         sync: false
       - key: CANARY_DB_PASSWORD
@@ -63,6 +67,10 @@ services:
       - key: COLLECTOR_TOKEN
         sync: false
       - key: ANTHROPIC_API_KEY
+        sync: false
+      # "anthropic-workspace-id: <id>" when the key is not scoped to a workspace; the
+      # Anthropic SDK reads it itself. Leave empty for a workspace key.
+      - key: ANTHROPIC_CUSTOM_HEADERS
         sync: false
       - key: CANARY_API_KEY
         sync: false
