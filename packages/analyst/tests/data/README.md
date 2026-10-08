@@ -7,5 +7,5 @@ Synthetic honeypot test data for the analyst tests. Nothing here was captured fr
   them is a working credential.
 - `responses/`: Messages API responses in the shape the API returns them, played back by the fake
   model client in place of claude-haiku-5-5 (gate), claude-sonnet-5-5 (tagger) and
-  claude-opus-5-5 (novel). `batch_*.json` and `batch_results.jsonl` stand in for the Message
+  claude-opus-5-5 (novel, brief). `batch_*.json` and `batch_results.jsonl` stand in for the Message
   Batches API.

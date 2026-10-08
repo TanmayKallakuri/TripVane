@@ -10,7 +10,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tripvane_core.config import Settings
-from tripvane_core.events import InputReceived, SessionEnded, SessionStarted, ToolCallAttempted
+from tripvane_core.events import (
+    InputReceived,
+    ModelTurn,
+    SessionEnded,
+    SessionStarted,
+    ToolCallAttempted,
+)
 from tripvane_core.hashing import payload_hash
 from tripvane_sensors.archetypes.github import replay
 from tripvane_sensors.archetypes.github.app import (
@@ -40,6 +46,13 @@ USAGE = {
     "cache_creation_input_tokens": 0,
     "cache_read_input_tokens": 0,
 }
+
+
+def _usage(turn: ModelTurn) -> dict[str, int]:
+    """The token counts a model_turn event carries, keyed as in the API's usage."""
+    return {key: getattr(turn, key) for key in USAGE}
+
+
 DIFF = "diff --git a/README.md b/README.md\n+Quick start:\n"
 
 
@@ -194,6 +207,10 @@ def test_issues_opened() -> None:
     assert event.source.user_agent == "GitHub-Hookshot/test"
     assert sensor.diffs.calls == []
     assert sensor.model.messages.requests[0]["messages"][0]["content"] == expected
+    # The cost report sums these token counts; each model call must carry its usage.
+    turns = [e for e in sensor.sink.events if isinstance(e, ModelTurn)]
+    assert len(turns) == len(sensor.model.messages.requests) > 0
+    assert all(_usage(turn) == USAGE for turn in turns)
 
 
 def test_issue_comment_created() -> None:

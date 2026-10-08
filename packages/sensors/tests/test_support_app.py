@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tripvane_core.config import Settings
-from tripvane_core.events import InputReceived, SessionStarted
+from tripvane_core.events import InputReceived, ModelTurn, SessionStarted
 from tripvane_sensors.archetypes.support.app import (
     FALLBACK_REPLIES,
     RATE_LIMIT,
@@ -29,6 +29,11 @@ USAGE = {
     "cache_creation_input_tokens": 0,
     "cache_read_input_tokens": 0,
 }
+
+
+def _usage(turn: ModelTurn) -> dict[str, int]:
+    """The token counts a model_turn event carries, keyed as in the API's usage."""
+    return {key: getattr(turn, key) for key in USAGE}
 
 
 def _text_turn(text: str) -> dict[str, Any]:
@@ -124,6 +129,9 @@ def test_chat_records_the_message_and_returns_the_model_reply() -> None:
     assert message.source.user_agent == "test-agent/1.0"
     assert message.source.headers_subset == {"Accept-Language": "en-GB"}
     assert sensor.model.messages.requests[0]["model"] == "claude-haiku-5-5"
+    # The cost report sums these token counts; each model call must carry its usage.
+    turns = [event for event in events if isinstance(event, ModelTurn)]
+    assert [_usage(turn) for turn in turns] == [USAGE, USAGE]
 
 
 def test_messages_in_one_conversation_share_a_session() -> None:

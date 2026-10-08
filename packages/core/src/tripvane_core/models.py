@@ -8,7 +8,7 @@ events.payload_id, session_sources, domains and session_domains, so later lookup
 join on indexed columns instead of reading event JSON.
 
 Milestone 6 (migration 0003) adds the analyst's columns on payloads, tag_proposals and
-analyst_batches.
+analyst_batches. Milestone 7 (migration 0004) adds api_keys for the lookup API.
 """
 
 from datetime import datetime
@@ -208,3 +208,15 @@ class AnalystBatch(Base):
     request_count: Mapped[int] = mapped_column(Integer)
     submitted_at: Mapped[datetime] = mapped_column(Timestamp)
     collected_at: Mapped[datetime | None] = mapped_column(Timestamp)
+
+
+class ApiKey(Base):
+    """A lookup API key. Only the sha256 of the key is stored; the key is shown once."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(BigId, primary_key=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(Timestamp, server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(Timestamp)

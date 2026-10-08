@@ -1,0 +1,40 @@
+# Public entry point for the core droplet: TLS for API_HOSTNAME (the lookup API and its
+# docs), CANARY_HOSTNAME (canary URLs only) and COLLECTOR_HOSTNAME (sensor ingest). Caddy
+# replaces any X-Forwarded-For sent by the client with the client address, and the API
+# trusts that header only from Caddy (TRUSTED_PROXY).
+{
+	admin off
+}
+
+{$API_HOSTNAME} {
+	header -Server
+	handle /c/* {
+		respond 404
+	}
+	handle {
+		reverse_proxy api:8080
+	}
+}
+
+# Canary URLs are planted in decoy documents, so they live on a hostname that does not
+# name Tripvane, and that hostname serves nothing else.
+{$CANARY_HOSTNAME} {
+	header -Server
+	handle /c/* {
+		reverse_proxy api:8080
+	}
+	handle {
+		respond 404
+	}
+}
+
+{$COLLECTOR_HOSTNAME} {
+	header -Server
+	# Checked from inside the droplet (the compose healthcheck), not served publicly.
+	handle /health {
+		respond 404
+	}
+	handle {
+		reverse_proxy collector:8080
+	}
+}

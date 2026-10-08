@@ -1,0 +1,14 @@
+{
+  "name": "tripvane",
+  "description": "The Tripvane Claude Code plugin.",
+  "owner": {
+    "name": "Tripvane"
+  },
+  "plugins": [
+    {
+      "name": "tripvane",
+      "source": "./packages/plugin",
+      "description": "Look up IP addresses, domains and payloads on the Tripvane deception grid."
+    }
+  ]
+}
