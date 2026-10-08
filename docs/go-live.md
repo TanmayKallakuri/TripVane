@@ -32,7 +32,10 @@ Working defaults, from the Coordinator's questions and the Domain and hosting op
    | Infrastructure lookalike sensor | `llm.<decoy-domain>` | infra |
    | GitHub triage sensor (later) | `hooks.<decoy-domain>` | github |
 
-   The canary host shares the core server's address with the API, so anyone who looks can tie a canary URL to Tripvane. That matters once document canaries are planted, which is not part of today's launch; give the API its own branded domain before then.
+   **Buy two domains, not three.** The canary host on `<ops-domain>` is a recorded choice for week one, not an oversight:
+   - A canary URL on `<ops-domain>` can be tied to Tripvane twice over: through the API hostname in Certificate Transparency logs, and through passive DNS, because it shares the core server's address. A third domain alone fixes only the first, since the address would still be shared; the canary host on `<decoy-domain>` would be worse, because the shared address would then tie the decoy domain, and every sensor on it, to the Tripvane API.
+   - The link only matters once a canary URL is planted in a document. Today's launch plants none: the decoys' canaries are fake credentials (4.1), which name no hostname.
+   - Before the first document canary is planted, move the canary host to its own domain on its own server (about 10 USD a year and 5 USD a month). The code serves canary URLs from the API service, so that needs a canary-only compose and Caddy configuration, which does not exist yet.
 3. **Hosting: Akamai Cloud (Linode); Vultr is the fallback.** Each sensor stack binds ports 80 and 443 (`infra/compose.*.yml`), so the code runs one sensor per server: today's scope needs **four servers**.
 
    | Server | Plan | Why | Monthly (as priced by the hosting thread) |
@@ -507,7 +510,7 @@ For each chosen session, following the shape of the existing fixtures and `fixtu
 
 - **Source ASNs are not captured.** Nothing fills `sources.asn`, so campaigns group payloads by text alone, and the brief's "top sources by ASN" is one unknown bucket. Brief number one should say sources are not yet attributed to networks.
 - **The analyst and the brief drafter record no token use.** They emit no `model_turn` events, so `make cost-report` shows sensor spend only, and the analyst has no daily budget. Read their spend from the Console; the key's spend limit is their only cap.
-- **Canary URLs need their own unbranded hostname.** The code enforces it (`Caddyfile.core` serves `/c/*` only on `CANARY_HOSTNAME`), but the canary host shares the core server's address with the API (decision 2). Today's launch plants no document canaries; the decoys' credential canaries do not depend on a hostname.
+- **Canary URLs need their own unbranded hostname.** The code enforces it (`Caddyfile.core` serves `/c/*` only on `CANARY_HOSTNAME`), but the canary host shares a domain and the core server's address with the API (decision 2). Today's launch plants no document canaries; the decoys' credential canaries do not depend on a hostname. Before the first document canary, the canary host needs its own domain and server.
 - **No scheduler.** The analyst, the cost report and the brief run only when someone runs them.
 - **Counts held in memory.** Sensor budgets and the API's daily limits reset when their container restarts.
 - **Sensor registration has no command.** 4.1 and 4.5 do it with SQL.
