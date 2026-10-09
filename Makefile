@@ -37,7 +37,8 @@ vercel-files:
 		  echo "../../../packages/$$svc"; } > deploy/vercel/$$svc/requirements.txt; \
 	done
 	@cp web/lookup.html deploy/vercel/api/public/index.html
-	@mkdir -p deploy/vercel/site && cp web/index.html deploy/vercel/site/index.html
+	@rm -rf deploy/vercel/site && mkdir -p deploy/vercel/site && \
+		cp -r web/index.html web/fonts deploy/vercel/site/
 
 # The whole schema as SQL, generated without a database connection (Alembic offline mode),
 # for applying through Supabase where the deploy machine cannot reach Postgres directly.
